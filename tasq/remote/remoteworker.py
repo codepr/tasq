@@ -2,8 +2,10 @@
 
 """
 tasq.remote.remoteworker.py
-~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
 """
+
+from __future__ import absolute_import, division, print_function, unicode_literals
 
 import pickle
 import logging
@@ -16,26 +18,47 @@ from ..job import Job
 from .workeractor import WorkerActor, ResponseActor
 
 
+_formatter = logging.Formatter('%(levelname)s - %(message)s', '%Y-%m-%d %H:%M:%S')
+
+
 class RemoteWorker:
 
-    def __init__(self, host, push_port, pull_port):
+    _log = logging.getLogger(__name__)
+
+    def __init__(self, host, push_port, pull_port, debug=False):
         # Host address to bind sockets to
         self._host = host
         # Port for push side (outgoing) of the communication channel
         self._push_port = push_port
         # Port for pull side (ingoing) of the communication channel
         self._pull_port = pull_port
+        # Debug flag
+        self._debug = debug
+        # Logging settings
+        sh = logging.StreamHandler()
+        sh.setFormatter(_formatter)
+        if self._debug is True:
+            sh.setLevel(logging.DEBUG)
+            self._log.setLevel(logging.DEBUG)
+            self._log.addHandler(sh)
+        else:
+            sh.setLevel(logging.INFO)
+            self._log.setLevel(logging.INFO)
+            self._log.addHandler(sh)
+        # ZMQ settings
         self._context = zmq.Context()
         self._push_socket = self._context.socket(zmq.PULL)
         self._pull_socket = self._context.socket(zmq.PUSH)
         # Actor for job execution
         self._responses = ResponseActor()
         # Actor for responses
-        self._worker = WorkerActor()
+        self._worker = WorkerActor(debug=self._debug)
 
     def _bind_sockets(self):
         self._push_socket.bind('tcp://{}:{}'.format(self._host, self._push_port))
         self._pull_socket.bind('tcp://{}:{}'.format(self._host, self._pull_port))
+        self._log.debug("Push channel set to %s:%s", self._host, self._push_port)
+        self._log.debug("Pull channel set to %s:%s", self._host, self._pull_port)
 
     def start(self):
         self._bind_sockets()

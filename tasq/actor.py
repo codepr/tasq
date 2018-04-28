@@ -5,8 +5,11 @@ tasq.actor.py
 ~~~~~~~~~~~~~
 """
 
+import logging
 from queue import Queue
 from threading import Thread, Event
+
+_formatter = logging.Formatter('%(levelname)s - %(message)s', '%Y-%m-%d %H:%M:%S')
 
 
 class ActorExit(Exception):
@@ -19,9 +22,23 @@ class Actor:
     into a mailbox and process them in separate thread, concurrently, without sharing any state with
     other actors"""
 
-    def __init__(self):
+    _log = logging.getLogger(__name__)
+
+    def __init__(self, debug=False):
+        self._debug = debug
         self._mailbox = Queue()
         self._terminated = Event()
+        # Logging settings
+        sh = logging.StreamHandler()
+        sh.setFormatter(_formatter)
+        if self._debug is True:
+            sh.setLevel(logging.DEBUG)
+            self._log.setLevel(logging.DEBUG)
+            self._log.addHandler(sh)
+        else:
+            sh.setLevel(logging.INFO)
+            self._log.setLevel(logging.INFO)
+            self._log.addHandler(sh)
 
     def send(self, msg):
         """Sends a message to the actor, effectively putting it into the mailbox"""
