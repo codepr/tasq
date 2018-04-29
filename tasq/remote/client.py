@@ -23,11 +23,15 @@ class TasqClient:
     of calling tasks awaiting for results and an asynchronous one which collect results in a
     dedicated dictionary"""
 
-    def __init__(self, host, port):
+    def __init__(self, host, port, plport=None):
         # Host address of a remote master to connect to
         self._host = host
         # Port for push side (outgoing) of the communication channel
         self._port = port
+        # Pull port for ingoing messages, containing result data
+        self._plport = plport or port + 1
+        # Connection flag
+        self._is_connected = False
         # ZMQ settings
         self._context = CloudPickleContext()
         self._task_socket = self._context.socket(zmq.PUSH)
@@ -35,7 +39,7 @@ class TasqClient:
         # Results dictionary, mapping task_name -> result
         self._results = {}
         # Gathering results, making the client unblocking
-        self._gatherer = Thread(target=self._gather, daemon=True)
+        self._gatherer = Thread(target=self._gather_results, daemon=True)
         self._gatherer.start()
 
     @property
@@ -47,10 +51,18 @@ class TasqClient:
         return self._port
 
     @property
+    def plport(self):
+        return self._plport
+
+    @property
+    def is_connected(self):
+        return self._is_connected
+
+    @property
     def results(self):
         return self._results
 
-    def _gather(self):
+    def _gather_results(self):
         """Gathering subroutine, must be run in another thread to concurrently listen for results
         and store them into a dedicated dictionary"""
         while True:
@@ -61,12 +73,16 @@ class TasqClient:
         """Connect to the remote workers, setting up PUSH and PULL channels, respectively used to
         send tasks and to retrieve results back"""
         self._task_socket.connect(f'tcp://{self._host}:{self._port}')
-        self._recv_socket.connect(f'tcp://{self._host}:{self._port + 1}')
+        self._recv_socket.connect(f'tcp://{self._host}:{self._plport}')
+        self._is_connected = True
 
     def schedule(self, runnable, *args, **kwargs):
-        """Schedule a job to a remote worker, without blocking. Require a runnable task, and arguments
-        to be passed with, cloudpickle will handle dependencies shipping. Optional it is possible to
-        give a name to the job, otherwise a UUID will be defined"""
+        """Schedule a job to a remote worker, without blocking. Require a runnable task, and
+        arguments to be passed with, cloudpickle will handle dependencies shipping. Optional it is
+        possible to give a name to the job, otherwise a UUID will be defined"""
+        if not self.is_connected:
+            print("Client not connected")
+            return
         name = kwargs.pop('name', u'')
         job = Job(name, runnable, *args, **kwargs)
         self._task_socket.send_data(job)
@@ -76,6 +92,9 @@ class TasqClient:
         require a runnable task, and arguments to be passed with, cloudpickle will handle
         dependencies shipping. Optional it is possible to give a name to the job, otherwise a UUID
         will be defined"""
+        if not self.is_connected:
+            print("Client not connected")
+            return
         name = kwargs.pop('name', u'')
         timeout = kwargs.pop('timeout', None)
         job = Job(name, runnable, *args, **kwargs)
@@ -92,3 +111,38 @@ class TasqClient:
             # Check if timeout expired
             if timeout and (int(time.time()) - tic) >= timeout:
                 break
+
+
+class TasqClientPool:
+
+    """Basic client pool, defining methods to talk to multiple remote workers"""
+
+    # TODO WIP - still a rudimentary implementation
+
+    def __init__(self, config, debug=False):
+        # Debug flag
+        self._debug = debug
+        # List of tuples defining host:port pairs to connect
+        self._config = config
+        # Pool of clients
+        self._clients = [TasqClient(host, psport, plport) for host, psport, plport in self._config]
+        # Collect results, list of dictionaries
+        self._results = []
+
+    @property
+    def results(self):
+        """Lazily check for new results and add them to the list of dictionaries before returning
+        it"""
+        for client in self._clients:
+            self._results.append(client.results)
+        return self._results
+
+    def map(self, func, iterable):
+        idx = 0
+        for args, kwargs in iterable:
+            if idx == len(self._clients) - 1:
+                idx = 0
+            # Lazy check for connection
+            if not self._clients[idx].is_connected:
+                self._clients[idx].connect()
+            self._clients[idx].schedule(func, *args, **kwargs)

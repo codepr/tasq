@@ -12,8 +12,7 @@ import logging
 from multiprocessing import Process
 import zmq
 
-from ..job import Job
-from .actors import ResponseActor, get_workers_pool, SmallestMailboxRouter
+from .actors import ResponseActor, actor_pool
 from .sockets import AsyncCloudPickleContext, CloudPickleContext
 
 
@@ -28,8 +27,6 @@ class Master:
     well
     """
 
-    _log = logging.getLogger(__name__)
-
     def __init__(self, host, push_port, pull_port, num_workers=5, debug=False):
         # Host address to bind sockets to
         self._host = host
@@ -42,6 +39,7 @@ class Master:
         # Debug flag
         self._debug = debug
         # Logging settings
+        self._log = logging.getLogger(f'{__name__}.{self._host}.{self._push_port}')
         sh = logging.StreamHandler()
         sh.setFormatter(_formatter)
         if self._debug is True:
@@ -62,14 +60,32 @@ class Master:
         # Generic worker actor
         self._responses = ResponseActor(name=u'Response actor', debug=self._debug)
         # Actor for responses
-        self._workers = get_workers_pool(
+        self._workers = actor_pool(
             self._num_workers,
+            actor_class='WorkerActor',
+            routing_type='SmallestMailboxRouter',
             debug=self._debug
         )
         # Event loop
         self._loop = asyncio.get_event_loop()
         # Handling loop exit
         self._loop.add_signal_handler(signal.SIGINT, self._stop)
+
+    @property
+    def host(self):
+        return self._host
+
+    @property
+    def push_port(self):
+        return self._push_port
+
+    @property
+    def pull_port(self):
+        return self._pull_port
+
+    @property
+    def num_workers(self):
+        return self._num_workers
 
     def _bind_sockets(self):
         """Binds PUSH and PULL channel sockets to the respective address:port pairs defined in the
@@ -80,7 +96,7 @@ class Master:
         self._log.debug("Pull channel set to %s:%s", self._host, self._pull_port)
 
     async def _start(self):
-        """receive messages with polling"""
+        """Receive jobs from clients with polling"""
         while True:
             events = await self._poller.poll()
             if self._push_socket in dict(events):
@@ -106,15 +122,16 @@ class Master:
 
 class Masters:
 
-    def __init__(self, binds):
+    def __init__(self, binds, debug=False):
         self._binds = binds
+        self._debug = debug
         self._procs = []
         self._init_binds()
 
     def _init_binds(self):
         self._procs = [
             Process(
-                target=Master(host, psh_port, pl_port).serve_forever(),
+                target=Master(host, psh_port, pl_port, debug=self._debug).serve_forever(),
                 daemon=True
             ) for host, psh_port, pl_port in self._binds
         ]

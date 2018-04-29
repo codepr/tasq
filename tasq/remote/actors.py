@@ -17,6 +17,11 @@ class WorkerActor(Actor):
     """Simple worker actor, execute a `job` and set a result with the response"""
 
     def submit(self, job):
+        self._log.debug(
+            "Sending message to actor (%s | pending jobs %s)",
+            self.name,
+            self.mailbox_size
+        )
         r = Result()
         self.send((job, r))
         return r
@@ -54,7 +59,7 @@ class Router:
     this it is possible to add different heuristic of message routing. If the len of the workers
     pool is just 1, ignore every defined heuristic and send the message to that only worker."""
 
-    def __init__(self, workers, func_name=u'send'):
+    def __init__(self, workers, func_name=u'submit'):
         self._workers = workers
         self._func_name = func_name
 
@@ -90,6 +95,8 @@ class RoundRobinRouter(Router):
         self._idx = 0
 
     def _route_message(self, msg):
+        """Send message to the current indexed actor, if the index reach the max length of the actor
+        list, it reset it to 0"""
         if self._idx == len(self._workers) - 1:
             self._idx = 0
         else:
@@ -102,6 +109,8 @@ class RandomRouter(Router):
     """Select a random worker from the pool and send the message to it"""
 
     def _route_message(self, msg):
+        """Retrieve a random index in the workers list and send message to the corresponding
+        actor"""
         import random
         idx = random.randint(0, len(self._workers))
         return self._call_func(idx, msg)
@@ -113,12 +122,28 @@ class SmallestMailboxRouter(Router):
     it"""
 
     def _route_message(self, msg):
-        idx = min(w.mailbox_size for w in self._workers)
-        print(f"Scheduled to worker - {idx}")
+        """Create a dictionary formed by mailbox size of each actor as key, and the actor itself as
+        value; by finding the minimum key in the dictionary, it send the message to the actor
+        associated with."""
+        actors = {w.mailbox_size: w for w in self._workers}
+        min_idx = min(k for k in actors)
+        idx = self._workers.index(actors[min_idx])
         return self._call_func(idx, msg)
 
 
-def get_workers_pool(num_workers, routing_type='RoundRobinRouter', debug=False):
+def actor_pool(num_workers, actor_class='WorkerActor',
+               func_name='submit', routing_type='RoundRobinRouter', debug=False):
+    """Return a router object by getting the definition directly from the module, raising an
+    exception if not found. Init the object with a `num_workers` actors"""
     import sys
-    cls = getattr(sys.modules[__name__], routing_type)
-    return cls([WorkerActor(name=f'Worker-{i}', debug=debug) for i in range(num_workers)], 'submit')
+    # Using current module, should be set as the name of the module where actors and routers are
+    # defined
+    module = sys.modules[__name__]
+    # Get actor class
+    actorcls = getattr(module, actor_class)
+    # Get router class
+    cls = getattr(module, routing_type)
+    return cls(
+        [actorcls(name=f'{actor_class}-{i}', debug=debug) for i in range(num_workers)],
+        func_name
+    )

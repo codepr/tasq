@@ -16,7 +16,5 @@ setup(
     author_email='a.g.baldan@gmail.com',
     packages=['tasq', 'tasq.remote', 'tasq.cli'],
     install_requires=required,
-    entry_points={
-        'console_scripts': ['tasq = tasq.cli.main:main']
-    }
+    scripts=['tq']
 )

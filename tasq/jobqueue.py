@@ -3,6 +3,7 @@
 """
 tasq.jobqueue.py
 ~~~~~~~~~~~~~~~~
+Contains naive implementation of a joinable queue for execution of tasks in a single node context.
 """
 
 from uuid import uuid4
@@ -15,12 +16,18 @@ from worker import Worker
 
 class JobQueue(JoinableQueue):
 
+    """Joinable queue for multiprocessing execution of task on a single node"""
+
     def __init__(self, result_queue, num_workers=5):
         ctx = get_context('spawn')
         JoinableQueue.__init__(self, ctx=ctx)
-        self.num_workers = num_workers
-        self.result_queue = result_queue
-        self.start_workers()
+        self._num_workers = num_workers
+        self._result_queue = result_queue
+        self._start_workers()
+
+    @property
+    def num_workers(self):
+        return self._num_workers
 
     @staticmethod
     def get_uuid():
@@ -32,7 +39,7 @@ class JobQueue(JoinableQueue):
     def get_task(self):
         return self.get()
 
-    def start_workers(self):
+    def _start_workers(self):
         for _ in range(self.num_workers):
             w = Worker(self)
             w.daemon = True
