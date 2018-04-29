@@ -4,7 +4,8 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 
 import json
 
-from tasq.remote.remoteworker import RemoteWorker, RemoteWorkers, TasqClient
+from tasq.remote.client import TasqClient
+from tasq.remote.master import Master
 
 __version__ = '0.1.0'
 

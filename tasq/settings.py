@@ -9,11 +9,15 @@ import os
 from . import Configuration
 
 
-class RemoteConfig(Configuration):
+class TasqConfig(Configuration):
 
-    defaults = {'debug': True}
+    defaults = {
+        'host': '127.0.0.1',
+        'port': 9000,
+        'debug': True
+    }
 
 
-def get_config(path=os.getenv('TASQ_REMOTE_CONF', '~/.tasq/configuration.json')):
-    rc = RemoteConfig(path)
+def get_config(path=os.getenv('TASQ_CONF', '~/.tasq/configuration.json')):
+    rc = TasqConfig(path)
     return rc

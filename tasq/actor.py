@@ -3,13 +3,16 @@
 """
 tasq.actor.py
 ~~~~~~~~~~~~~
+Contains definitions of generic Actor class, must be subclassed to effectively instance useful
+actors.
 """
 
+import uuid
 import logging
 from queue import Queue
 from threading import Thread, Event
 
-_formatter = logging.Formatter('%(levelname)s - %(message)s', '%Y-%m-%d %H:%M:%S')
+_formatter = logging.Formatter('%(levelname)s - %(threadName)s - %(message)s', '%Y-%m-%d %H:%M:%S')
 
 
 class ActorExit(Exception):
@@ -22,13 +25,15 @@ class Actor:
     into a mailbox and process them in separate thread, concurrently, without sharing any state with
     other actors"""
 
-    _log = logging.getLogger(__name__)
-
-    def __init__(self, debug=False):
+    def __init__(self, name=u'', debug=False):
+        # Assingn a default uuid name in case of no name set
+        self._name = name or uuid.uuid4()
         self._debug = debug
+        self._is_running = False
         self._mailbox = Queue()
         self._terminated = Event()
         # Logging settings
+        self._log = logging.getLogger(f"{__name__}.{self._name}")
         sh = logging.StreamHandler()
         sh.setFormatter(_formatter)
         if self._debug is True:
@@ -40,6 +45,18 @@ class Actor:
             self._log.setLevel(logging.INFO)
             self._log.addHandler(sh)
 
+    @property
+    def name(self):
+        return self._name
+
+    @property
+    def is_running(self):
+        return self._is_running
+
+    @property
+    def mailbox_size(self):
+        return self._mailbox.qsize()
+
     def send(self, msg):
         """Sends a message to the actor, effectively putting it into the mailbox"""
         self._mailbox.put(msg)
@@ -49,6 +66,7 @@ class Actor:
         it raises an execption and shutdown the actor loop"""
         msg = self._mailbox.get()
         if msg is ActorExit:
+            self._is_running = False
             raise ActorExit()
         return msg
 
@@ -60,6 +78,8 @@ class Actor:
         """Run the processing thread"""
         t = Thread(target=self._bootstrap, daemon=True)
         t.start()
+        self._is_running = True
+        self._log.debug("%s started", self.name)
 
     def _bootstrap(self):
         """Target method to be run into a thread, call the `run` method till an `ActorExit`
