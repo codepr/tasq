@@ -20,7 +20,7 @@ DEBUG - MainThread - Response actor started
 
 In a python shell
 
-```python
+```
 Python 3.6.5 (default, Apr 12 2018, 22:45:43)
 [GCC 7.3.1 20180312] on linux
 Type "help", "copyright", "credits" or "license" for more information.
@@ -65,7 +65,7 @@ $ pip install -e git+https://github.com/codepr/tasq.git@master
 
 ## Changelog
 
-See the [CHANGELOG](CHANGELOG.md) file.
+See the [CHANGES](CHANGES.md) file.
 
 ## TODO:
 
