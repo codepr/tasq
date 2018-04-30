@@ -57,7 +57,7 @@ selected from a pool according to a defined routing strategy (e.g. Round robin, 
 Smallest mailbox which should give a trivial indication of the workload of each actor and select the
 one with minimum pending tasks to execute).
 
-![Tasq master-workers arch](static/worker_model.png)
+![Tasq master-workers arch](static/worker_model_2.png)
 
 Another (pool of) actor(s) is dedicated to answering the clients with the result once it is ready,
 this way it is possible to make the worker listening part unblocking and as fast as possible.
