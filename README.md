@@ -1,17 +1,17 @@
 Tasq
 ====
 
-Very simple broker-less distributed Task queue that allow the scheduling of jobs function to be
-executed on local or remote workers. Proof of Concept leveraging ZMQ sockets and cloudpickle
-serialization capabilities as well as a very basic actor system to handle different loads of work
-from connecting clients.
+Very simple broker-less distributed Task queue that allow the scheduling of job functions to be
+executed on local or remote workers. Can be seen as a Proof of Concept leveraging ZMQ sockets and
+cloudpickle serialization capabilities as well as a very basic actor system to handle different
+loads of work from connecting clients.
 
 
 ## Quickstart
 
 Starting a worker on a node, with debug flag set to true on configuration file
 
-```sh
+```
 $ tq --worker
 DEBUG - Push channel set to 127.0.0.1:9000
 DEBUG - Pull channel set to 127.0.0.1:9001
@@ -46,12 +46,32 @@ Type "help", "copyright", "credits" or "license" for more information.
 >>> {'Task-1': 'Foo - 3', 'Task-2': 'Foo - 4'}
 ```
 
+## Behind the scenes
+
+Essentially it is possible to start workers across the nodes of a network without forming a cluster
+and every single node can host multiple workers by setting differents ports for the communication.
+Each worker, once started, support multiple connections from clients and is ready to accept tasks.
+
+Once a worker receive a job from a client, it demand its execution to dedicated actor, usually
+selected from a pool according to a defined routing strategy (e.g. Round robin, Random routing or
+Smallest mailbox which should give a trivial indication of the workload of each actor and select the
+one with minimum pending tasks to execute).
+
+![Tasq master-workers arch](static/worker_model.png)
+
+Another (pool of) actor(s) is dedicated to answering the clients with the result once it is ready,
+this way it is possible to make the worker listening part unblocking and as fast as possible.
+
+The reception of jobs from clients is handled by `ZMQ.PULL` socket while the response transmission
+handled by `ResponseActor` is served by `ZMQ.PUSH` socket, effectively forming a dual channel of
+communication, separating ingoing from outgoing traffic.
+
 ## Installation
 
 Being a didactical project it is not released on Pypi yet, just clone the repository and install it
 locally or play with it using `python -i` or `ipython`.
 
-```sh
+```
 $ git clone https://github.com/codepr/tasq.git
 $ cd tasq
 $ pip install .
@@ -59,7 +79,7 @@ $ pip install .
 
 or, to skip cloning part
 
-```sh
+```
 $ pip install -e git+https://github.com/codepr/tasq.git@master
 ```
 
@@ -74,3 +94,5 @@ See the [CHANGES](CHANGES.md) file.
   heuristics)
 - Configuration handling throughout the code
 - Better explanation of the implementation and actors defined
+- Improve CLI options
+- Dockerfile

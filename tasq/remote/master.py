@@ -27,7 +27,8 @@ class Master:
     well
     """
 
-    def __init__(self, host, push_port, pull_port, num_workers=5, debug=False):
+    def __init__(self, host, push_port, pull_port, num_workers=5,
+                 routing_type='RoundRobinRouter', debug=False):
         # Host address to bind sockets to
         self._host = host
         # Port for push side (outgoing) of the communication channel
@@ -36,6 +37,8 @@ class Master:
         self._pull_port = pull_port
         # Number of workers
         self._num_workers = num_workers
+        # Routing type
+        self._routing_type = routing_type
         # Debug flag
         self._debug = debug
         # Logging settings
@@ -63,7 +66,7 @@ class Master:
         self._workers = actor_pool(
             self._num_workers,
             actor_class='WorkerActor',
-            routing_type='SmallestMailboxRouter',
+            routing_type=self._routing_type
             debug=self._debug
         )
         # Event loop
@@ -86,6 +89,10 @@ class Master:
     @property
     def num_workers(self):
         return self._num_workers
+
+    @property
+    def routing_type(self):
+        return self._routing_type
 
     def _bind_sockets(self):
         """Binds PUSH and PULL channel sockets to the respective address:port pairs defined in the
@@ -123,8 +130,11 @@ class Master:
 class Masters:
 
     def __init__(self, binds, debug=False):
+        # List of tuples (host, pport, plport) to bind to
         self._binds = binds
+        # Debug flag
         self._debug = debug
+        # Processes, equals the len of `binds`
         self._procs = []
         self._init_binds()
 
