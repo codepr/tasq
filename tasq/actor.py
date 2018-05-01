@@ -102,7 +102,7 @@ class Actor:
 
 class Result:
 
-    """Simple class to wrap a result for processed jobs"""
+    """Simple class to wrap a result for processed jobs, acts much like a future object"""
 
     def __init__(self):
         self._event = Event()

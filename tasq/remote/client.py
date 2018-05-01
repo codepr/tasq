@@ -67,7 +67,10 @@ class TasqClient:
         and store them into a dedicated dictionary"""
         while True:
             job_result = self._recv_socket.recv_data()
-            self._results[job_result.name] = job_result.value
+            if not job_result.value and job_result.exc:
+                self._results[job_result.name] = job_result.exc
+            else:
+                self._results[job_result.name] = job_result.value
 
     def connect(self):
         """Connect to the remote workers, setting up PUSH and PULL channels, respectively used to

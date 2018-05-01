@@ -6,7 +6,16 @@ tasq.job.py
 Jobs related classes and functions
 """
 
+import sys
 import uuid
+import time
+from enum import IntEnum
+
+
+class JobStatus(IntEnum):
+    OK = 0
+    FAILED = 1
+    PENDING = 2
 
 
 class Job:
@@ -19,23 +28,59 @@ class Job:
         self._func = func
         self._args = args
         self._kwargs = kwargs
+        # Start time of the job placeholder
+        self._start_time = None
+        # End time of the job
+        self._end_time = None
+        # Job status
+        self._status = JobStatus.PENDING
 
     @property
     def job_id(self):
         return self._job_id
 
+    @property
+    def status(self):
+        return self._status
+
+    @property
+    def start_time(self):
+        return self._start_time
+
+    @property
+    def end_time(self):
+        return self._end_time
+
+    def finished_ok(self):
+        if self._status == JobStatus.OK:
+            return True
+        return False
+
+    def execution_time(self):
+        return self._end_time - self._start_time
+
     def execute(self):
         """Execute the function with arguments and keyword arguments"""
-        return self._func(*self._args, **self._kwargs)
+        self._start_time = time.time()
+        try:
+            result = JobResult(self.job_id, self._func(*self._args, **self._kwargs))
+        except:
+            # Failing
+            self._status = JobStatus.FAILED
+            result = JobResult(self.job_id, None, sys.exc_info()[0])
+        finally:
+            self._end_time = time.time()
+        return result
 
 
 class JobResult:
 
     """Wrapper class for results of task executions"""
 
-    def __init__(self, name, value):
+    def __init__(self, name, value, exc=None):
         self._name = name
         self._value = value
+        self._exc = exc
 
     @property
     def name(self):
@@ -44,3 +89,7 @@ class JobResult:
     @property
     def value(self):
         return self._value
+
+    @property
+    def exc(self):
+        return self._exc

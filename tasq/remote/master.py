@@ -66,7 +66,7 @@ class Master:
         self._workers = actor_pool(
             self._num_workers,
             actor_class='WorkerActor',
-            routing_type=self._routing_type
+            routing_type=self._routing_type,
             debug=self._debug
         )
         # Event loop

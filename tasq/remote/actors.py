@@ -7,8 +7,6 @@ This module contains all actors and routers as well used as workers for all task
 remote calls.
 """
 
-import time
-from ..job import JobResult
 from ..actor import Actor, Result
 
 
@@ -29,14 +27,14 @@ class WorkerActor(Actor):
     def run(self):
         while True:
             job, result = self.recv()
-            tic = time.time()
+            self._log.debug("%s - executing job %s", self.name, job.job_id)
             response = job.execute()
             self._log.debug(
                 "%s - Job succesfully executed in %s s",
                 self.name,
-                time.time() - tic
+                job.execution_time()
             )
-            result.set_result(JobResult(job.job_id, response))
+            result.set_result(response)
 
 
 class ResponseActor(Actor):
