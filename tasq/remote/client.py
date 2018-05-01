@@ -10,11 +10,19 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 
 import time
 from threading import Thread
+from collections import deque
 
 import zmq
 
 from ..job import Job
 from .sockets import CloudPickleContext
+
+
+class TasqClientNotConnected(Exception):
+
+    def __init__(self, msg=u''):
+        self.message = msg
+        super().__init__(self.message)
 
 
 class TasqClient:
@@ -38,6 +46,8 @@ class TasqClient:
         self._recv_socket = self._context.socket(zmq.PULL)
         # Results dictionary, mapping task_name -> result
         self._results = {}
+        # Pending requests while not connected
+        self._pending = deque()
         # Gathering results, making the client unblocking
         self._gatherer = Thread(target=self._gather_results, daemon=True)
         self._gatherer.start()
@@ -59,6 +69,10 @@ class TasqClient:
         return self._is_connected
 
     @property
+    def pending(self):
+        return self._pending
+
+    @property
     def results(self):
         return self._results
 
@@ -78,24 +92,36 @@ class TasqClient:
         self._task_socket.connect(f'tcp://{self._host}:{self._port}')
         self._recv_socket.connect(f'tcp://{self._host}:{self._plport}')
         self._is_connected = True
+        # Check if there are pending requests and in case, empty the queue
+        while self._pending:
+            job = self._pending.pop()
+            self.schedule(job.func, *job.args, name=job.job_id, **job.kwargs)
+
+    def disconnect(self):
+        """Disconnect PUSH and PULL sockets"""
+        if self.is_connected:
+            self._task_socket.disconnect(f'tcp://{self._host}:{self._port}')
+            self._recv_socket.disconnect(f'tcp://{self._host}:{self._plport}')
+            self._is_connected = False
 
     def close(self):
         """Close sockets connected to workers, destroy zmq cotext"""
+        if self.is_connected:
+            self.disconnect()
         self._task_socket.close()
         self._recv_socket.close()
         self._context.destroy()
-        self._is_connected = False
 
     def schedule(self, runnable, *args, **kwargs):
         """Schedule a job to a remote worker, without blocking. Require a runnable task, and
         arguments to be passed with, cloudpickle will handle dependencies shipping. Optional it is
         possible to give a name to the job, otherwise a UUID will be defined"""
-        if not self.is_connected:
-            print("Client not connected")
-            return
         name = kwargs.pop('name', u'')
         job = Job(name, runnable, *args, **kwargs)
-        self._task_socket.send_data(job)
+        if not self.is_connected:
+            self._pending.appendleft(job)
+        else:
+            self._task_socket.send_data(job)
 
     def schedule_blocking(self, runnable, *args, **kwargs):
         """Schedule a job to a remote worker wating for the result to be ready. Like `schedule` it
@@ -103,8 +129,7 @@ class TasqClient:
         dependencies shipping. Optional it is possible to give a name to the job, otherwise a UUID
         will be defined"""
         if not self.is_connected:
-            print("Client not connected")
-            return
+            raise TasqClientNotConnected('Client not connected to no worker')
         name = kwargs.pop('name', u'')
         timeout = kwargs.pop('timeout', None)
         job = Job(name, runnable, *args, **kwargs)

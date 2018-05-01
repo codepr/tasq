@@ -42,6 +42,18 @@ class Job:
         return self._job_id
 
     @property
+    def func(self):
+        return self._func
+
+    @property
+    def args(self):
+        return self._args
+
+    @property
+    def kwargs(self):
+        return self._kwargs
+
+    @property
     def status(self):
         return self._status
 
