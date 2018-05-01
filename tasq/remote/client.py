@@ -79,6 +79,13 @@ class TasqClient:
         self._recv_socket.connect(f'tcp://{self._host}:{self._plport}')
         self._is_connected = True
 
+    def close(self):
+        """Close sockets connected to workers, destroy zmq cotext"""
+        self._task_socket.close()
+        self._recv_socket.close()
+        self._context.destroy()
+        self._is_connected = False
+
     def schedule(self, runnable, *args, **kwargs):
         """Schedule a job to a remote worker, without blocking. Require a runnable task, and
         arguments to be passed with, cloudpickle will handle dependencies shipping. Optional it is

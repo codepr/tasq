@@ -7,6 +7,8 @@ This module contains all actors and routers as well used as workers for all task
 remote calls.
 """
 
+from __future__ import absolute_import, division, print_function, unicode_literals
+
 from ..actor import Actor, Result
 
 
@@ -15,6 +17,9 @@ class WorkerActor(Actor):
     """Simple worker actor, execute a `job` and set a result with the response"""
 
     def submit(self, job):
+        """Submits a job object to the run loop of the actor, returning immediatly a `Result` object
+        without having to wait for it to be filled with the effective processing result of the
+        job"""
         self._log.debug(
             "Sending message to actor (%s | pending jobs %s)",
             self.name,
@@ -25,6 +30,8 @@ class WorkerActor(Actor):
         return r
 
     def run(self):
+        """Executes pending jobs, setting the results to the associated `Result` object once it is
+        ready"""
         while True:
             job, result = self.recv()
             self._log.debug("%s - executing job %s", self.name, job.job_id)
@@ -46,6 +53,7 @@ class ResponseActor(Actor):
         self.send((sendfunc, result))
 
     def run(self):
+        """Send response back to connected clients by using ZMQ PUSH channel"""
         while True:
             sendfunc, res = self.recv()
             sendfunc(res.result())

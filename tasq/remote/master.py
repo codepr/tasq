@@ -6,6 +6,8 @@ tasq.remote.master.py
 Master process, listening for incoming connections to schedule tasks to a pool of worker actors
 """
 
+from __future__ import absolute_import, division, print_function, unicode_literals
+
 import signal
 import asyncio
 import logging
@@ -16,7 +18,7 @@ from .actors import ResponseActor, actor_pool
 from .sockets import AsyncCloudPickleContext, CloudPickleContext
 
 
-_formatter = logging.Formatter('%(levelname)s - %(message)s', '%Y-%m-%d %H:%M:%S')
+_formatter = logging.Formatter('%(processName)s - %(levelname)s - %(message)s', '%Y-%m-%d %H:%M:%S')
 
 
 class Master:
@@ -27,7 +29,7 @@ class Master:
     well
     """
 
-    def __init__(self, host, push_port, pull_port, num_workers=5,
+    def __init__(self, host, pull_port, push_port, num_workers=5,
                  routing_type='RoundRobinRouter', debug=False):
         # Host address to bind sockets to
         self._host = host
@@ -56,10 +58,10 @@ class Master:
         # ZMQ settings
         self._context = CloudPickleContext()
         self._async_context = AsyncCloudPickleContext()
-        self._push_socket = self._async_context.socket(zmq.PULL)
-        self._pull_socket = self._context.socket(zmq.PUSH)
+        self._pull_socket = self._async_context.socket(zmq.PULL)
+        self._push_socket = self._context.socket(zmq.PUSH)
         self._poller = zmq.asyncio.Poller()
-        self._poller.register(self._push_socket, zmq.POLLIN)
+        self._poller.register(self._pull_socket, zmq.POLLIN)
         # Generic worker actor
         self._responses = ResponseActor(name=u'Response actor', debug=self._debug)
         # Actor for responses
@@ -97,26 +99,34 @@ class Master:
     def _bind_sockets(self):
         """Binds PUSH and PULL channel sockets to the respective address:port pairs defined in the
         constructor"""
-        self._push_socket.bind(f'tcp://{self._host}:{self._push_port}')
         self._pull_socket.bind(f'tcp://{self._host}:{self._pull_port}')
-        self._log.debug("Push channel set to %s:%s", self._host, self._push_port)
-        self._log.debug("Pull channel set to %s:%s", self._host, self._pull_port)
+        self._push_socket.bind(f'tcp://{self._host}:{self._push_port}')
+        self._log.info("Pull channel set to %s:%s", self._host, self._pull_port)
+        self._log.info("Push channel set to %s:%s", self._host, self._push_port)
 
     async def _start(self):
         """Receive jobs from clients with polling"""
         while True:
             events = await self._poller.poll()
-            if self._push_socket in dict(events):
-                job = await self._push_socket.recv_data()
+            if self._pull_socket in dict(events):
+                job = await self._pull_socket.recv_data()
                 res = self._workers.route(job)
-                self._responses.submit(self._pull_socket.send_data, res)
+                self._responses.submit(self._push_socket.send_data, res)
 
     def _stop(self):
         """Stops the loop after canceling all remaining tasks"""
+        print("\nStopping..")
+        # Cancel pending tasks (opt)
         for task in asyncio.Task.all_tasks():
             task.cancel()
+        # Stop the running loop
         self._loop.stop()
-        print("\nCtrl+C again to exit")
+        # Close connected sockets
+        self._pull_socket.close()
+        self._pull_socket.close()
+        # Destroy the contexts
+        self._context.destroy()
+        self._async_context.destroy()
 
     def serve_forever(self):
         """Blocking function, schedule the execution of the coroutine waiting for incoming tasks and
@@ -138,14 +148,24 @@ class Masters:
         self._procs = []
         self._init_binds()
 
+    def _serve_master(self, host, psh_port, pl_port):
+        m = Master(host, psh_port, pl_port, debug=self._debug)
+        m.serve_forever()
+
     def _init_binds(self):
         self._procs = [
             Process(
-                target=Master(host, psh_port, pl_port, debug=self._debug).serve_forever(),
-                daemon=True
+                target=self._serve_master,
+                args=(host, psh_port, pl_port,)
             ) for host, psh_port, pl_port in self._binds
         ]
 
     def start_procs(self):
         for proc in self._procs:
             proc.start()
+        try:
+            for proc in self._procs:
+                proc.join()
+        except KeyboardInterrupt:
+            # Clean up should be placed
+            pass

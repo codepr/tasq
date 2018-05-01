@@ -46,6 +46,18 @@ Type "help", "copyright", "credits" or "license" for more information.
 >>> {'Task-1': 'Foo - 3', 'Task-2': 'Foo - 4'}
 ```
 
+Tasq also supports an optional static configuration file, in the `tasq.settings.py` module is
+defined a configuration class with some default fields. By setting the environment variable
+`TASQ_CONF` it is possible to configure the location of the json configuration file on the
+filesystem.
+
+By setting the `-f` flag it is possible to also set a location of a configuration to follow on the
+filesystem
+
+```
+$ tq --worker -f path/to/conf/conf.json
+```
+
 ## Behind the scenes
 
 Essentially it is possible to start workers across the nodes of a network without forming a cluster
@@ -89,9 +101,11 @@ See the [CHANGES](CHANGES.md) file.
 
 ## TODO:
 
-- An useful client pool
+- A meaningful client pool
+- Debugging multiprocessing start for more workers on the same node
 - Refactor of existing code and corner case handling (Still very basic implementation of even simple
   heuristics)
+- Delayed tasks and scheduled cron tasks
 - Configuration handling throughout the code
 - Better explanation of the implementation and actors defined
 - Improve CLI options

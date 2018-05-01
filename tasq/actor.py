@@ -7,12 +7,18 @@ Contains definitions of generic Actor class, must be subclassed to effectively i
 actors.
 """
 
+from __future__ import absolute_import, division, print_function, unicode_literals
+
 import uuid
 import logging
 from queue import Queue
 from threading import Thread, Event
 
-_formatter = logging.Formatter('%(levelname)s - %(threadName)s - %(message)s', '%Y-%m-%d %H:%M:%S')
+
+_formatter = logging.Formatter(
+    '%(processName)s - %(levelname)s - %(threadName)s - %(message)s',
+    '%Y-%m-%d %H:%M:%S'
+)
 
 
 class ActorExit(Exception):

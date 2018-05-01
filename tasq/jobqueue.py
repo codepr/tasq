@@ -6,6 +6,8 @@ tasq.jobqueue.py
 Contains naive implementation of a joinable queue for execution of tasks in a single node context.
 """
 
+from __future__ import absolute_import, division, print_function, unicode_literals
+
 from uuid import uuid4
 from multiprocessing.queues import JoinableQueue
 from multiprocessing import get_context

@@ -6,6 +6,8 @@ tasq.job.py
 Jobs related classes and functions
 """
 
+from __future__ import absolute_import, division, print_function, unicode_literals
+
 import sys
 import uuid
 import time
