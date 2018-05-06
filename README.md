@@ -35,26 +35,36 @@ Type "help", "copyright", "credits" or "license" for more information.
 >>>     time.sleep(r)
 >>>     return f'Foo - {random.randint(0, num)}'
 >>>
->>> tc.schedule(foo, 5, name='Task-1')
+>>> fut = tc.schedule(foo, 5, name='Task-1')
+>>> fut
+>>> <Future at 0x7f7d6e048160 state=pending>
+>>> fut.result
+>>>
+>>> # After some time, to let worker complete the job
+>>> fut.result
+>>> 'Foo - 2'
 >>> tc.results
->>> {'Task-1': 'Foo - 3'}
+>>> {'Task-1': <Future at 0x7f7d6e048160 state=finished returned str>}
 >>>
 >>> tc.schedule_blocking(foo, 5, name='Task-2')
->>> ('Task-2', 'Foo - 4')
+>>> 'Foo - 4'
 >>>
 >>> tc.results
->>> {'Task-1': 'Foo - 3', 'Task-2': 'Foo - 4'}
+>>> {'Task-1': <Future at 0x7f7d6e048160 state=finished returned str>,
+>>>  'Task-2': <Future at 0x7f7d6e047268 state=finished returned str>}
 ```
 
 Scheduling a job after a delay
 
 ```
->>> tc.schedule(foo, 5, name='Delayed-Task', delay=5)
+>>> fut = tc.schedule(foo, 5, name='Delayed-Task', delay=5)
 >>> tc.results
->>> {}
+>>> {'Delayed-Task': <Future at 0x7f7d6e044208 state=pending>}
 >>> # Wait 5 seconds
 >>> tc.results
->>> {'Delayed-Task': 'Foo - 2'}
+>>> {'Delayed-Task': <Future at 0x7f7d6e044208 state=finished returned str>}
+>>> fut.result()
+>>> 'Foo - 2'
 ```
 
 Scheduling a task to be executed continously in a defined interval

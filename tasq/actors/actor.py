@@ -17,10 +17,7 @@ from threading import Thread, Event
 from .actorsystem import ActorSystem
 
 
-_formatter = logging.Formatter(
-    '%(processName)s - %(levelname)s - %(threadName)s - %(message)s',
-    '%Y-%m-%d %H:%M:%S'
-)
+_fmt = logging.Formatter('%(message)s', '%Y-%m-%d %H:%M:%S')
 
 
 class ActorExit(Exception):
@@ -45,7 +42,7 @@ class Actor:
         # Logging settings
         self._log = logging.getLogger(f"{__name__}.{self._name}")
         sh = logging.StreamHandler()
-        sh.setFormatter(_formatter)
+        sh.setFormatter(_fmt)
         if self._debug is True:
             sh.setLevel(logging.DEBUG)
             self._log.setLevel(logging.DEBUG)

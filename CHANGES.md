@@ -1,3 +1,11 @@
+### 0.6.0
+(May 6, 2018)
+
+- Refactored client code, now it uses a Future system to handle results and return a future even
+  while scheduling a job in a non-blocking manner
+- Improved logging
+- Improved representation of a Job in string
+
 ### 0.5.0
 (May 5, 2018)
 

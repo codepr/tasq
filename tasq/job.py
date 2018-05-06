@@ -110,6 +110,17 @@ class Job:
             self._end_time = time.time()
         return result
 
+    def __repr__(self):
+        args = ','.join(str(i) for i in self.args)
+        kwargs = ','.join(key + '=' + repr(self.kwargs[key]) for key in self.kwargs)
+        arguments = '(' + args
+        if kwargs:
+            arguments += ', ' + kwargs
+        arguments += ')'
+        if self.delay:
+            arguments += f' delay: {self.delay}'
+        return f"job ID: {self.job_id} - {self.func.__name__}{arguments}"
+
 
 class JobResult:
 

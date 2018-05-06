@@ -8,7 +8,7 @@ Client part of the application, responsible for scheduling jobs to local or remo
 
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import time
+from concurrent.futures import Future
 from threading import Thread
 from collections import deque
 
@@ -81,9 +81,9 @@ class TasqClient:
         while True:
             job_result = self._recv_socket.recv_data()
             if not job_result.value and job_result.exc:
-                self._results[job_result.name] = job_result.exc
+                self._results[job_result.name].set_result(job_result.exc)
             else:
-                self._results[job_result.name] = job_result.value
+                self._results[job_result.name].set_result(job_result.value)
 
     def connect(self):
         """Connect to the remote workers, setting up PUSH and PULL channels, respectively used to
@@ -120,10 +120,15 @@ class TasqClient:
         possible to give a name to the job, otherwise a UUID will be defined"""
         name = kwargs.pop('name', u'')
         job = Job(name, runnable, *args, **kwargs)
+        # If not connected enqueue for execution at the first connection
         if not self.is_connected:
             self._pending.appendleft(job)
         else:
             self._task_socket.send_data(job)
+            # Create a Future and return it, _gatherer thread will set the result once received
+            future = Future()
+            self._results[name] = future
+            return future
 
     def schedule_blocking(self, runnable, *args, **kwargs):
         """Schedule a job to a remote worker wating for the result to be ready. Like `schedule` it
@@ -132,22 +137,10 @@ class TasqClient:
         will be defined"""
         if not self.is_connected:
             raise TasqClientNotConnected('Client not connected to no worker')
-        name = kwargs.pop('name', u'')
         timeout = kwargs.pop('timeout', None)
-        job = Job(name, runnable, *args, **kwargs)
-        # Make sure that we not return a previous result
-        if job.job_id in self.results:
-            del self._results[job.job_id]
-        # Actually make the call
-        self._task_socket.send_data(job)
-        # Poor timeout ticker
-        tic = int(time.time())
-        while True:
-            if job.job_id in self.results:
-                return job.job_id, self.results[job.job_id]
-            # Check if timeout expired
-            if timeout and (int(time.time()) - tic) >= timeout:
-                break
+        future = self.schedule(runnable, *args, **kwargs)
+        result = future.result(timeout)
+        return result
 
 
 class TasqClientPool:

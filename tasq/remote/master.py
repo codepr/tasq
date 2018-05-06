@@ -20,7 +20,7 @@ from ..actors.actorsystem import ActorSystem
 from ..actors.routers import RoundRobinRouter
 
 
-_formatter = logging.Formatter('%(processName)s - %(levelname)s - %(message)s', '%Y-%m-%d %H:%M:%S')
+_fmt = logging.Formatter('%(message)s', '%Y-%m-%d %H:%M:%S')
 
 
 class Master:
@@ -53,7 +53,7 @@ class Master:
         # Logging settings
         self._log = logging.getLogger(f'{__name__}.{self._host}.{self._push_port}')
         sh = logging.StreamHandler()
-        sh.setFormatter(_formatter)
+        sh.setFormatter(_fmt)
         if self._debug is True:
             sh.setLevel(logging.DEBUG)
             self._log.setLevel(logging.DEBUG)
@@ -110,8 +110,8 @@ class Master:
         constructor"""
         self._pull_socket.bind(f'tcp://{self._host}:{self._pull_port}')
         self._push_socket.bind(f'tcp://{self._host}:{self._push_port}')
-        self._log.info("Pull channel set to %s:%s", self._host, self._pull_port)
-        self._log.info("Push channel set to %s:%s", self._host, self._push_port)
+        self._log.info("Listening for jobs on %s:%s", self._host, self._pull_port)
+        # self._log.info("Push channel set to %s:%s", self._host, self._push_port)
 
     async def _start(self):
         """Receive jobs from clients with polling"""

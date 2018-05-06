@@ -40,6 +40,7 @@ class WorkerActor(Actor):
         ready"""
         while True:
             job, result = self.recv()
+            self._log.debug("Received %s", job)
             # If eta in keyword arguments spawn a timed actor and send job to it
             if 'eta' in job.kwargs:
                 eta = job.kwargs.pop('eta')
@@ -55,10 +56,16 @@ class WorkerActor(Actor):
                 self._log.debug("%s - executing job %s", self.name, job.job_id)
                 response = job.execute()
                 self._log.debug(
-                    "%s - Job succesfully executed in %s s",
+                    "%s - Job %s succesfully executed in %s s",
                     self.name,
+                    job.job_id,
                     job.execution_time()
                 )
+                if not response.value and response.exc:
+                    jobres = response.exc
+                else:
+                    jobres = response.value
+                self._log.debug('%s - Job %s result = %s', self.name, job.job_id, jobres)
                 result.set_result(response)
 
 
@@ -122,13 +129,19 @@ class TimedActor(Actor):
         ready"""
         while True:
             job, result = self.recv()
-            self._log.debug("%s - executing job %s", self.name, job.job_id)
+            self._log.debug("%s - executing timed job %s", self.name, job)
             response = job.execute()
             self._log.debug(
-                "%s - Job succesfully executed in %s s",
+                "%s - Job % succesfully executed in %s s",
                 self.name,
+                job.job_id,
                 job.execution_time()
             )
+            if not response.value and response.exc:
+                jobres = response.exc
+            else:
+                jobres = response.value
+            self._log.debug('%s - Timed job %s result = %s', self.name, job.job_id, jobres)
             result.set_result(response)
             self._response_actor.submit(result)
             self.submit(job, str(job.delay) + 's')
