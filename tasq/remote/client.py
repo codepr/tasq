@@ -50,7 +50,6 @@ class TasqClient:
         self._pending = deque()
         # Gathering results, making the client unblocking
         self._gatherer = Thread(target=self._gather_results, daemon=True)
-        self._gatherer.start()
 
     @property
     def host(self):
@@ -89,13 +88,16 @@ class TasqClient:
     def connect(self):
         """Connect to the remote workers, setting up PUSH and PULL channels, respectively used to
         send tasks and to retrieve results back"""
-        self._task_socket.connect(f'tcp://{self._host}:{self._port}')
-        self._recv_socket.connect(f'tcp://{self._host}:{self._plport}')
-        self._is_connected = True
-        # Check if there are pending requests and in case, empty the queue
-        while self._pending:
-            job = self._pending.pop()
-            self.schedule(job.func, *job.args, name=job.job_id, **job.kwargs)
+        if not self.is_connected:
+            self._task_socket.connect(f'tcp://{self._host}:{self._port}')
+            self._recv_socket.connect(f'tcp://{self._host}:{self._plport}')
+            self._is_connected = True
+            # Start gathering thread
+            self._gatherer.start()
+            # Check if there are pending requests and in case, empty the queue
+            while self._pending:
+                job = self._pending.pop()
+                self.schedule(job.func, *job.args, name=job.job_id, **job.kwargs)
 
     def disconnect(self):
         """Disconnect PUSH and PULL sockets"""

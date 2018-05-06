@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 
 """
-tasq.actor.py
-~~~~~~~~~~~~~
+tasq.actors.actor.py
+~~~~~~~~~~~~~~~~~~~~
 Contains definitions of generic Actor class, must be subclassed to effectively instance useful
 actors.
 """
@@ -13,6 +13,8 @@ import uuid
 import logging
 from queue import Queue
 from threading import Thread, Event
+
+from .actorsystem import ActorSystem
 
 
 _formatter = logging.Formatter(
@@ -31,13 +33,15 @@ class Actor:
     into a mailbox and process them in separate thread, concurrently, without sharing any state with
     other actors"""
 
-    def __init__(self, name=u'', debug=False):
+    def __init__(self, name=u'', ctx=None, debug=False):
         # Assingn a default uuid name in case of no name set
         self._name = name or uuid.uuid4()
         self._debug = debug
         self._is_running = False
         self._mailbox = Queue()
         self._terminated = Event()
+        # XXX it is really a joke at the moment but still, context == actorsystem singleton
+        self._ctx = ctx or ActorSystem()
         # Logging settings
         self._log = logging.getLogger(f"{__name__}.{self._name}")
         sh = logging.StreamHandler()

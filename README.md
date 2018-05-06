@@ -46,6 +46,26 @@ Type "help", "copyright", "credits" or "license" for more information.
 >>> {'Task-1': 'Foo - 3', 'Task-2': 'Foo - 4'}
 ```
 
+Scheduling a job after a delay
+
+```
+>>> tc.schedule(foo, 5, name='Delayed-Task', delay=5)
+>>> tc.results
+>>> {}
+>>> # Wait 5 seconds
+>>> tc.results
+>>> {'Delayed-Task': 'Foo - 2'}
+```
+
+Scheduling a task to be executed continously in a defined interval
+
+```
+>>> tc.schedule(foo, 5, name='8_seconds_interval_task', eta='8s')
+>>> tc.schedule(foo, 5, name='2_hours_interval_task', eta='2h')
+```
+
+Delayed and interval tasks are supported even in blocking scheduling manner.
+
 Tasq also supports an optional static configuration file, in the `tasq.settings.py` module is
 defined a configuration class with some default fields. By setting the environment variable
 `TASQ_CONF` it is possible to configure the location of the json configuration file on the
@@ -92,7 +112,7 @@ $ pip install .
 or, to skip cloning part
 
 ```
-$ pip install -e git+https://github.com/codepr/tasq.git@master
+$ pip install -e git+https://github.com/codepr/tasq.git@master#egg=tasq
 ```
 
 ## Changelog
@@ -101,6 +121,7 @@ See the [CHANGES](CHANGES.md) file.
 
 ## TODO:
 
+- Tests
 - A meaningful client pool
 - Debugging multiprocessing start for more workers on the same node
 - Refactor of existing code and corner case handling (Still very basic implementation of even simple

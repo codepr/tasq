@@ -1,5 +1,18 @@
-### 0.2.0:
+### 0.5.0
+(May 5, 2018)
 
+- Added first implementation of delayed jobs
+- Added first implementation of interval-scheduled jobs
+- Added a basic ActorSystem like and context to actors
+- Refactored some parts, removed Singleton and Configuration classes from __init__.py
+
+### 0.3.0:
+(May 1, 2018)
+
+- Fixed minor bug in initialization of multiple workers on the same node
+- Added support for pending tasks on the client side
+
+### 0.2.0:
 (Apr 30, 2018)
 
 - Renamed some modules

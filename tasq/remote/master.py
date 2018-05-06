@@ -14,8 +14,10 @@ import logging
 from multiprocessing import Process
 import zmq
 
-from .actors import ResponseActor, actor_pool
+from .actors import ResponseActor, WorkerActor
 from .sockets import AsyncCloudPickleContext, CloudPickleContext
+from ..actors.actorsystem import ActorSystem
+from ..actors.routers import RoundRobinRouter
 
 
 _formatter = logging.Formatter('%(processName)s - %(levelname)s - %(message)s', '%Y-%m-%d %H:%M:%S')
@@ -30,7 +32,7 @@ class Master:
     """
 
     def __init__(self, host, pull_port, push_port, num_workers=5,
-                 routing_type='RoundRobinRouter', debug=False):
+                 router_class=RoundRobinRouter, debug=False):
         # Host address to bind sockets to
         self._host = host
         # Port for push side (outgoing) of the communication channel
@@ -40,9 +42,14 @@ class Master:
         # Number of workers
         self._num_workers = num_workers
         # Routing type
-        self._routing_type = routing_type
+        self._router_class = router_class
         # Debug flag
         self._debug = debug
+        # Worker's ActorSystem
+        self._system = ActorSystem(
+            f'{self._host}:({self._push_port}, {self._pull_port})',
+            self._debug
+        )
         # Logging settings
         self._log = logging.getLogger(f'{__name__}.{self._host}.{self._push_port}')
         sh = logging.StreamHandler()
@@ -63,13 +70,15 @@ class Master:
         self._poller = zmq.asyncio.Poller()
         self._poller.register(self._pull_socket, zmq.POLLIN)
         # Generic worker actor
-        self._responses = ResponseActor(name=u'Response actor', debug=self._debug)
+        self._responses = self._system.actor_of(
+            ResponseActor, name=u'Response actor', sendfunc=self._push_socket.send_data, debug=self._debug
+        )
         # Actor for responses
-        self._workers = actor_pool(
-            self._num_workers,
-            actor_class='WorkerActor',
-            routing_type=self._routing_type,
-            debug=self._debug
+        self._workers = self._system.router_of(
+            num_workers=self._num_workers,
+            actor_class=WorkerActor,
+            router_class=self._router_class,
+            response_actor=self._responses,
         )
         # Event loop
         self._loop = asyncio.get_event_loop()
@@ -93,8 +102,8 @@ class Master:
         return self._num_workers
 
     @property
-    def routing_type(self):
-        return self._routing_type
+    def router_class(self):
+        return self._router_class
 
     def _bind_sockets(self):
         """Binds PUSH and PULL channel sockets to the respective address:port pairs defined in the
@@ -111,7 +120,7 @@ class Master:
             if self._pull_socket in dict(events):
                 job = await self._pull_socket.recv_data()
                 res = self._workers.route(job)
-                self._responses.submit(self._push_socket.send_data, res)
+                self._responses.submit(res)
 
     def _stop(self):
         """Stops the loop after canceling all remaining tasks"""
