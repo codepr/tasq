@@ -13,9 +13,8 @@ Starting a worker on a node, with debug flag set to true on configuration file
 
 ```
 $ tq --worker
-DEBUG - Push channel set to 127.0.0.1:9000
-DEBUG - Pull channel set to 127.0.0.1:9001
-DEBUG - MainThread - Response actor started
+Listening for jobs on 127.0.0.1:9000
+Response actor started
 ```
 
 In a python shell

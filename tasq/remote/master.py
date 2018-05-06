@@ -17,7 +17,7 @@ import zmq
 from .actors import ResponseActor, WorkerActor
 from .sockets import AsyncCloudPickleContext, CloudPickleContext
 from ..actors.actorsystem import ActorSystem
-from ..actors.routers import RoundRobinRouter
+from ..actors.routers import RoundRobinRouter, SmallestMailboxRouter
 
 
 _fmt = logging.Formatter('%(message)s', '%Y-%m-%d %H:%M:%S')
@@ -69,16 +69,20 @@ class Master:
         self._push_socket = self._context.socket(zmq.PUSH)
         self._poller = zmq.asyncio.Poller()
         self._poller.register(self._pull_socket, zmq.POLLIN)
-        # Generic worker actor
-        self._responses = self._system.actor_of(
-            ResponseActor, name=u'Response actor', sendfunc=self._push_socket.send_data, debug=self._debug
+        # Actor router for responses
+        self._responses = self._system.router_of(
+            num_workers=self._num_workers,
+            actor_class=ResponseActor,
+            router_class=SmallestMailboxRouter,
+            func_name='send',
+            sendfunc=self._push_socket.send_data
         )
-        # Actor for responses
+        # Generic worker actor router
         self._workers = self._system.router_of(
             num_workers=self._num_workers,
             actor_class=WorkerActor,
             router_class=self._router_class,
-            response_actor=self._responses,
+            response_actor=self._responses
         )
         # Event loop
         self._loop = asyncio.get_event_loop()
@@ -111,7 +115,6 @@ class Master:
         self._pull_socket.bind(f'tcp://{self._host}:{self._pull_port}')
         self._push_socket.bind(f'tcp://{self._host}:{self._push_port}')
         self._log.info("Listening for jobs on %s:%s", self._host, self._pull_port)
-        # self._log.info("Push channel set to %s:%s", self._host, self._push_port)
 
     async def _start(self):
         """Receive jobs from clients with polling"""
@@ -120,7 +123,7 @@ class Master:
             if self._pull_socket in dict(events):
                 job = await self._pull_socket.recv_data()
                 res = self._workers.route(job)
-                self._responses.submit(res)
+                self._responses.route(res)
 
     def _stop(self):
         """Stops the loop after canceling all remaining tasks"""
@@ -141,7 +144,6 @@ class Master:
         """Blocking function, schedule the execution of the coroutine waiting for incoming tasks and
         run the asyncio loop forever"""
         self._bind_sockets()
-        self._responses.start()
         asyncio.ensure_future(self._start())
         self._loop.run_forever()
 

@@ -13,18 +13,18 @@ import uuid
 import time
 import signal
 import logging
-from multiprocessing import Process
+from threading import Thread
 
 
 _fmt = logging.Formatter('%(message)s', '%Y-%m-%d %H:%M:%S')
 
 
-class Worker(Process):
+class Worker(Thread):
 
     """Generic worker process, contains a job queue and handle incoming jobs for execution"""
 
     def __init__(self, job_queue, name=u'', debug=False):
-        Process.__init__(self)
+        Thread.__init__(self)
         # Process name, defaulted to a uuid
         self._name = name or uuid.uuid4()
         # A joinable job queue

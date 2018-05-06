@@ -27,7 +27,7 @@ class WorkerActor(Actor):
         without having to wait for it to be filled with the effective processing result of the
         job"""
         self._log.debug(
-            "Sending message to actor (%s | pending jobs %s)",
+            "Sending message to actor %s - pending jobs %s",
             self.name,
             self.mailbox_size
         )
@@ -78,9 +78,6 @@ class ResponseActor(Actor):
         self._sendfunc = sendfunc
         super().__init__(name, ctx, debug)
 
-    def submit(self, result):
-        self.send(result)
-
     def run(self):
         """Send response back to connected clients by using ZMQ PUSH channel"""
         while True:
@@ -117,7 +114,7 @@ class TimedActor(Actor):
             except ValueError:
                 delay = multiples[eta[-1]] * int(eta[:-1])
         self._log.debug(
-            "Sending message to actor (%s | pending jobs %s)",
+            "Sending message to actor %s - pending jobs %s",
             self.name,
             self.mailbox_size
         )
@@ -143,5 +140,5 @@ class TimedActor(Actor):
                 jobres = response.value
             self._log.debug('%s - Timed job %s result = %s', self.name, job.job_id, jobres)
             result.set_result(response)
-            self._response_actor.submit(result)
+            self._response_actor.send(result)
             self.submit(job, str(job.delay) + 's')

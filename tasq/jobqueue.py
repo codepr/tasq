@@ -8,35 +8,33 @@ Contains naive implementation of a joinable queue for execution of tasks in a si
 
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-from uuid import uuid4
-from multiprocessing.queues import JoinableQueue
-from multiprocessing import get_context
+from queue import Queue
 
-from job import Job
-from worker import Worker
+from .job import Job
+from .worker import Worker
 
 
-class JobQueue(JoinableQueue):
+class LocalJobQueue(Queue):
 
-    """Joinable queue for multiprocessing execution of task on a single node"""
+    """Queue for multithreaded execution of task on a single node"""
 
     def __init__(self, result_queue, num_workers=5):
-        ctx = get_context('spawn')
-        JoinableQueue.__init__(self, ctx=ctx)
+        Queue.__init__(self)
         self._num_workers = num_workers
         self._result_queue = result_queue
         self._start_workers()
 
     @property
+    def result_queue(self):
+        return self._result_queue
+
+    @property
     def num_workers(self):
         return self._num_workers
 
-    @staticmethod
-    def get_uuid():
-        return uuid4()
-
     def add_task(self, task, *args, **kwargs):
-        self.put(Job(JobQueue.get_uuid(), task, *args, **kwargs))
+        name = kwargs.get('name', None)
+        self.put(Job(name, task, *args, **kwargs))
 
     def get_task(self):
         return self.get()
