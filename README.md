@@ -96,6 +96,11 @@ Listening for jobs on 127.0.0.1:9000
 Listening for jobs on 127.0.0.1:9090
 ```
 
+If jobs are scheduled for execution on a disconnected client, or remote workers are not up at the
+time of the scheduling, all jobs will be enqeued for later execution. This means that there's no
+need to actually start workers before job scheduling, at the first worker up all jobs will be sent
+and executed.
+
 ## Behind the scenes
 
 Essentially it is possible to start workers across the nodes of a network without forming a cluster

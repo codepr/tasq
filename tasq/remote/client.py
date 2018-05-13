@@ -183,7 +183,15 @@ class TasqClientPool:
         it"""
         return self._results
 
+    def shutdown(self):
+        """Close all connected clients"""
+        for client in self._clients:
+            client.close()
+        self._system.shutdown()
+
     def map(self, func, iterable):
+        """Schedule a list of jobs represented by `iterable` in a round-robin manner. Can be seen as
+        equivalent as schedule with `RoundRobinRouter` routing."""
         idx = 0
         for args, kwargs in iterable:
             if idx == len(self._clients) - 1:
