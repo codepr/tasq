@@ -87,6 +87,15 @@ filesystem
 $ tq --worker -f path/to/conf/conf.json
 ```
 
+Multiple workers can be started in the same node, this will start two worker process ready to
+receive jobs.
+
+```
+$ tq --workers 127.0.0.1:9000:9001, 127.0.0.1:9090:9091
+Listening for jobs on 127.0.0.1:9000
+Listening for jobs on 127.0.0.1:9090
+```
+
 ## Behind the scenes
 
 Essentially it is possible to start workers across the nodes of a network without forming a cluster
@@ -121,7 +130,7 @@ $ pip install .
 or, to skip cloning part
 
 ```
-$ pip install -e git+https://github.com/codepr/tasq.git@master#egg=tasq
+$ pip install git+https://github.com/codepr/tasq.git@master#egg=tasq
 ```
 
 ## Changelog
@@ -130,13 +139,13 @@ See the [CHANGES](CHANGES.md) file.
 
 ## TODO:
 
-- Tests
-- A meaningful client pool
-- Debugging multiprocessing start for more workers on the same node
-- Refactor of existing code and corner case handling (Still very basic implementation of even simple
-  heuristics)
-- Delayed tasks and scheduled cron tasks
-- Configuration handling throughout the code
-- Better explanation of the implementation and actors defined
-- Improve CLI options
-- Dockerfile
+- [ ] Tests
+- [ ] A meaningful client pool
+- [x] Debugging multiprocessing start for more workers on the same node
+- [ ] Refactor of existing code and corner case handling (Still very basic implementation of even
+  [ ] simple heuristics)
+- [x] Delayed tasks and scheduled cron tasks
+- [ ] Configuration handling throughout the code
+- [x] Better explanation of the implementation and actors defined
+- [ ] Improve CLI options
+- [ ] Dockerfile

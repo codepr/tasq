@@ -15,6 +15,9 @@ from collections import deque
 import zmq
 
 from ..job import Job
+from ..actors.routers import RoundRobinRouter
+from ..actors.actorsystem import ActorSystem
+from .actors import ClientWorker
 from .sockets import CloudPickleContext
 
 
@@ -149,22 +152,35 @@ class TasqClientPool:
 
     # TODO WIP - still a rudimentary implementation
 
-    def __init__(self, config, debug=False):
+    def __init__(self, config, router_class=RoundRobinRouter, debug=False):
         # Debug flag
         self._debug = debug
         # List of tuples defining host:port pairs to connect
         self._config = config
+        # Router class
+        self._router_class = router_class
         # Pool of clients
         self._clients = [TasqClient(host, psport, plport) for host, psport, plport in self._config]
-        # Collect results, list of dictionaries
-        self._results = []
+        # Collect results in a dictionary
+        self._results = {}
+        # Workers actor system
+        self._system = ActorSystem('clientpool-actorsystem', self._debug)
+        # Workers pool
+        self._workers = self._system.router_of(
+            num_workers=len(self._clients),
+            actor_class=ClientWorker,
+            router_class=self._router_class,
+            clients=self._clients
+        )
+
+    @property
+    def router_class(self):
+        return self._router_class
 
     @property
     def results(self):
         """Lazily check for new results and add them to the list of dictionaries before returning
         it"""
-        for client in self._clients:
-            self._results.append(client.results)
         return self._results
 
     def map(self, func, iterable):
@@ -176,3 +192,13 @@ class TasqClientPool:
             if not self._clients[idx].is_connected:
                 self._clients[idx].connect()
             self._clients[idx].schedule(func, *args, **kwargs)
+
+    def schedule(self, runnable, *args, **kwargs):
+        """Schedule a job to a remote worker, without blocking. Require a runnable task, and
+        arguments to be passed with, cloudpickle will handle dependencies shipping. Optional it is
+        possible to give a name to the job, otherwise a UUID will be defined"""
+        name = kwargs.pop('name', u'')
+        job = Job(name, runnable, *args, **kwargs)
+        future = self._workers.route(job)
+        self._results[job.job_id] = future
+        return future

@@ -9,6 +9,7 @@ remote calls.
 
 from __future__ import absolute_import, division, print_function, unicode_literals
 
+from concurrent.futures import Future
 from ..actors.actor import Actor, Result
 
 
@@ -142,3 +143,33 @@ class TimedActor(Actor):
             result.set_result(response)
             self._response_actor.send(result)
             self.submit(job, str(job.delay) + 's')
+
+
+class ClientWorker(Actor):
+
+    """Simplicistic worker with responsibility to communicate job scheduling to a `TasqClient`
+    instance"""
+
+    def __init__(self, client, name=u'', ctx=None, debug=False):
+        self._client = client
+        super().__init__(name=name, ctx=ctx, debug=debug)
+
+    def submit(self, job):
+        """Create a `Future` object and enqueue it into the mailbox with the associated job, then
+        return it to the caller"""
+        future = Future()
+        self.send((job, future))
+        return future
+
+    def run(self):
+        """Consumes all messages in the mailbox, setting each future's result with the result
+        returned by the call."""
+        while True:
+            job, future = self.recv()
+            self._log.debug("Received %s", job)
+            self._log.debug("%s - executing job %s", self.name, job.job_id)
+            if not self._client.is_connected:
+                self._client.connect()
+            fut = self._client.schedule(job.func, *job.args, name=job.job_id, **job.kwargs)
+            # XXX A bit sloppy, but probably better schedule the fut result settings in a callback
+            future.set_result(fut.result())

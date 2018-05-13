@@ -1,3 +1,9 @@
+### 0.7.0
+(May 14, 2018)
+
+- Added a ClientPool implementation to schedule jobs to different workers by using routers
+  capabilities
+
 ### 0.6.0
 (May 6, 2018)
 

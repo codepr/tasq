@@ -95,7 +95,24 @@ def actor_pool(num_workers, actor_class, router_class,
     """Return a router object by getting the definition directly from the module, raising an
     exception if not found. Init the object with a `num_workers` actors"""
     actorname = actor_class.__name__
+    clients = kwargs.pop('clients', None)
+    if clients:
+        return router_class(
+            [actor_class(
+                name=f'{actorname}-{i}',
+                debug=debug,
+                client=c,
+                *args,
+                **kwargs
+            ) for i, c in zip(range(num_workers), clients)],
+            func_name
+        )
     return router_class(
-        [actor_class(name=f'{actorname}-{i}', debug=debug, *args, **kwargs) for i in range(num_workers)],
+        [actor_class(
+            name=f'{actorname}-{i}',
+            debug=debug,
+            *args,
+            **kwargs
+        ) for i in range(num_workers)],
         func_name
     )
