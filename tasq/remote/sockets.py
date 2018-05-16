@@ -22,6 +22,10 @@ from ..settings import get_config
 conf = get_config()
 
 
+class InvalidSignature(Exception):
+    pass
+
+
 def pickle_and_compress(data):
     """Pickle data with cloudpickle to bytes and then compress the resulting stream with zlib"""
     pickled_data = cloudpickle.dumps(data)
@@ -46,7 +50,7 @@ def verifyhmac(sharedkey, recvd_digest, pickled_data):
     exception"""
     new_digest = hmac.new(sharedkey, pickled_data, hashlib.sha1).digest()
     if recvd_digest != new_digest:
-        raise TypeError
+        raise InvalidSignature
 
 
 class CloudPickleSocket(zmq.Socket):
@@ -78,7 +82,8 @@ class CloudPickleSocket(zmq.Socket):
         recv_digest, pickled_data = payload
         try:
             verifyhmac(conf['sharedkey'].encode(), recv_digest, pickled_data)
-        except TypeError:
+        except InvalidSignature:
+            # TODO log here
             raise
         else:
             return decompress_and_unpickle(pickled_data)
@@ -120,7 +125,8 @@ class AsyncCloudPickleSocket(Socket):
         recv_digest, pickled_data = payload
         try:
             verifyhmac(conf['sharedkey'].encode(), recv_digest, pickled_data)
-        except TypeError:
+        except InvalidSignature:
+            # TODO log here
             raise
         else:
             return decompress_and_unpickle(pickled_data)
