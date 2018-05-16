@@ -34,13 +34,15 @@ class TasqClient:
     of calling tasks awaiting for results and an asynchronous one which collect results in a
     dedicated dictionary"""
 
-    def __init__(self, host, port, plport=None):
+    def __init__(self, host, port, plport=None, sign_data=False):
         # Host address of a remote master to connect to
         self._host = host
         # Port for push side (outgoing) of the communication channel
         self._port = port
         # Pull port for ingoing messages, containing result data
         self._plport = plport or port + 1
+        # Send digital signed data
+        self._sign_data = sign_data
         # Connection flag
         self._is_connected = False
         # ZMQ settings
@@ -82,7 +84,10 @@ class TasqClient:
         """Gathering subroutine, must be run in another thread to concurrently listen for results
         and store them into a dedicated dictionary"""
         while True:
-            job_result = self._recv_socket.recv_data()
+            if self._sign_data:
+                job_result = self._recv_socket.recv_signed()
+            else:
+                job_result = self._recv_socket.recv_data()
             if not job_result.value and job_result.exc:
                 self._results[job_result.name].set_result(job_result.exc)
             else:
@@ -127,7 +132,10 @@ class TasqClient:
         if not self.is_connected:
             self._pending.appendleft(job)
         else:
-            self._task_socket.send_data(job)
+            if self._sign_data:
+                self._task_socket.send_signed(job)
+            else:
+                self._task_socket.send_data(job)
             # Create a Future and return it, _gatherer thread will set the result once received
             future = Future()
             self._results[name] = future

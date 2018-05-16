@@ -12,7 +12,7 @@ loads of work from connecting clients.
 Starting a worker on a node, with debug flag set to true on configuration file
 
 ```
-$ tq --worker
+$ tq worker
 Listening for jobs on 127.0.0.1:9000
 Response actor started
 ```
@@ -101,6 +101,13 @@ time of the scheduling, all jobs will be enqeued for later execution. This means
 need to actually start workers before job scheduling, at the first worker up all jobs will be sent
 and executed.
 
+### Security
+
+Currently tasq gives the option to send pickled functions using digital sign in order to prevent
+manipulations of the sent payloads, being dependency-free it uses `hmac` and `hashlib` to generate
+digests and to verify integrity of payloads, planning to move to a better implementation probably
+using `pynacl` or something similar.
+
 ## Behind the scenes
 
 Essentially it is possible to start workers across the nodes of a network without forming a cluster
@@ -144,13 +151,14 @@ See the [CHANGES](CHANGES.md) file.
 
 ## TODO:
 
+- [ ] Check for pynacl for security on pickled data
 - [ ] Tests
 - [ ] A meaningful client pool
 - [x] Debugging multiprocessing start for more workers on the same node
 - [ ] Refactor of existing code and corner case handling (Still very basic implementation of even
   [ ] simple heuristics)
 - [x] Delayed tasks and scheduled cron tasks
-- [ ] Configuration handling throughout the code
+- [x] Configuration handling throughout the code
 - [x] Better explanation of the implementation and actors defined
 - [ ] Improve CLI options
 - [ ] Dockerfile

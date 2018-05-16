@@ -1,3 +1,9 @@
+### 0.8.0
+(May, 17, 2018)
+
+- Simple implementation of digital signed data sent through sockets, this way sender and receiver
+  have a basic security layer to check for integrity and legitimacy of received data
+
 ### 0.7.0
 (May 14, 2018)
 

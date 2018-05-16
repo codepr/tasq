@@ -32,7 +32,7 @@ class Master:
     """
 
     def __init__(self, host, pull_port, push_port, num_workers=5,
-                 router_class=RoundRobinRouter, debug=False):
+                 router_class=RoundRobinRouter, sign_data=False, debug=False):
         # Host address to bind sockets to
         self._host = host
         # Port for push side (outgoing) of the communication channel
@@ -43,6 +43,8 @@ class Master:
         self._num_workers = num_workers
         # Routing type
         self._router_class = router_class
+        # Send digital signed data
+        self._sign_data = sign_data
         # Debug flag
         self._debug = debug
         # Worker's ActorSystem
@@ -69,13 +71,18 @@ class Master:
         self._push_socket = self._context.socket(zmq.PUSH)
         self._poller = zmq.asyncio.Poller()
         self._poller.register(self._pull_socket, zmq.POLLIN)
+        # Func data to be used into response actor
+        if self._sign_data:
+            sendfunc = self._push_socket.send_signed
+        else:
+            sendfunc = self._push_socket.send_data
         # Actor router for responses
         self._responses = self._system.router_of(
             num_workers=self._num_workers,
             actor_class=ResponseActor,
             router_class=SmallestMailboxRouter,
             func_name='send',
-            sendfunc=self._push_socket.send_data
+            sendfunc=sendfunc
         )
         # Generic worker actor router
         self._workers = self._system.router_of(
@@ -121,7 +128,10 @@ class Master:
         while True:
             events = await self._poller.poll()
             if self._pull_socket in dict(events):
-                job = await self._pull_socket.recv_data()
+                if self._sign_data:
+                    job = await self._pull_socket.recv_signed()
+                else:
+                    job = await self._pull_socket.recv_data()
                 res = self._workers.route(job)
                 self._responses.route(res)
 
@@ -150,9 +160,11 @@ class Master:
 
 class Masters:
 
-    def __init__(self, binds, debug=False):
+    def __init__(self, binds, sign_data=False, debug=False):
         # List of tuples (host, pport, plport) to bind to
         self._binds = binds
+        # Digital sign data before send an receive it
+        self._sign_data = sign_data
         # Debug flag
         self._debug = debug
         # Processes, equals the len of `binds`
@@ -160,7 +172,7 @@ class Masters:
         self._init_binds()
 
     def _serve_master(self, host, psh_port, pl_port):
-        m = Master(host, psh_port, pl_port, debug=self._debug)
+        m = Master(host, psh_port, pl_port, sign_data=self._sign_data, debug=self._debug)
         m.serve_forever()
 
     def _init_binds(self):

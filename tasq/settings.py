@@ -16,6 +16,8 @@ class TasqConfig(Configuration):
     defaults = {
         'host': '127.0.0.1',
         'port': 9000,
+        'sign_data': False,
+        'sharedkey': 'put-here-a-shared-key',
         'debug': True
     }
 
