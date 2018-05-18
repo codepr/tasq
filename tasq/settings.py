@@ -18,6 +18,7 @@ class TasqConfig(Configuration):
         'port': 9000,
         'sign_data': False,
         'sharedkey': 'put-here-a-shared-key',
+        'unix_socket': False,
         'debug': True
     }
 

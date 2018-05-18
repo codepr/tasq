@@ -34,7 +34,7 @@ class TasqClient:
     of calling tasks awaiting for results and an asynchronous one which collect results in a
     dedicated dictionary"""
 
-    def __init__(self, host, port, plport=None, sign_data=False):
+    def __init__(self, host, port, plport=None, sign_data=False, unix_socket=False):
         # Host address of a remote master to connect to
         self._host = host
         # Port for push side (outgoing) of the communication channel
@@ -43,6 +43,9 @@ class TasqClient:
         self._plport = plport or port + 1
         # Send digital signed data
         self._sign_data = sign_data
+        # Unix socket flag, if set to true, unix sockets for interprocess communication will be used
+        # and ports will be used to differentiate push and pull channel
+        self._unix_socket = unix_socket
         # Connection flag
         self._is_connected = False
         # ZMQ settings
@@ -80,6 +83,10 @@ class TasqClient:
     def results(self):
         return self._results
 
+    @property
+    def unix_socket(self):
+        return self._unix_socket
+
     def _gather_results(self):
         """Gathering subroutine, must be run in another thread to concurrently listen for results
         and store them into a dedicated dictionary"""
@@ -97,8 +104,12 @@ class TasqClient:
         """Connect to the remote workers, setting up PUSH and PULL channels, respectively used to
         send tasks and to retrieve results back"""
         if not self.is_connected:
-            self._task_socket.connect(f'tcp://{self._host}:{self._port}')
-            self._recv_socket.connect(f'tcp://{self._host}:{self._plport}')
+            if self._unix_socket:
+                self._task_socket.connect(f'ipc://{self._host}-{self._port}')
+                self._recv_socket.connect(f'ipc://{self._host}-{self._plport}')
+            else:
+                self._task_socket.connect(f'tcp://{self._host}:{self._port}')
+                self._recv_socket.connect(f'tcp://{self._host}:{self._plport}')
             self._is_connected = True
             # Start gathering thread
             self._gatherer.start()
@@ -110,8 +121,12 @@ class TasqClient:
     def disconnect(self):
         """Disconnect PUSH and PULL sockets"""
         if self.is_connected:
-            self._task_socket.disconnect(f'tcp://{self._host}:{self._port}')
-            self._recv_socket.disconnect(f'tcp://{self._host}:{self._plport}')
+            if self._unix_socket:
+                self._task_socket.disconnect(f'ipc://{self._host}-{self._port}')
+                self._recv_socket.disconnect(f'ipc://{self._host}-{self._plport}')
+            else:
+                self._task_socket.disconnect(f'tcp://{self._host}:{self._port}')
+                self._recv_socket.disconnect(f'tcp://{self._host}:{self._plport}')
             self._is_connected = False
 
     def close(self):
@@ -121,6 +136,10 @@ class TasqClient:
         self._task_socket.close()
         self._recv_socket.close()
         self._context.destroy()
+
+    def pending_results(self):
+        """Retrieve pending jobs from the results dictionary"""
+        return {k: v for k, v in self._results.items() if v.done() is False}
 
     def schedule(self, runnable, *args, **kwargs):
         """Schedule a job to a remote worker, without blocking. Require a runnable task, and
@@ -132,13 +151,14 @@ class TasqClient:
         if not self.is_connected:
             self._pending.appendleft(job)
         else:
+            # Create a Future and return it, _gatherer thread will set the result once received
+            future = Future()
+            self._results[name] = future
+            # Send job to worker
             if self._sign_data:
                 self._task_socket.send_signed(job)
             else:
                 self._task_socket.send_data(job)
-            # Create a Future and return it, _gatherer thread will set the result once received
-            future = Future()
-            self._results[name] = future
             return future
 
     def schedule_blocking(self, runnable, *args, **kwargs):
@@ -218,3 +238,10 @@ class TasqClientPool:
         future = self._workers.route(job)
         self._results[job.job_id] = future
         return future
+
+    def schedule_blocking(self, runnable, *args, **kwargs):
+        """Schedule a job to a remote worker, awaiting for it to finish its execution."""
+        timeout = kwargs.pop('timeout', None)
+        future = self.schedule(runnable, *args, **kwargs)
+        result = future.result(timeout)
+        return result

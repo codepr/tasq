@@ -111,15 +111,17 @@ class Job:
         return result
 
     def __repr__(self):
-        args = ','.join(str(i) for i in self.args)
-        kwargs = ','.join(key + '=' + repr(self.kwargs[key]) for key in self.kwargs)
-        arguments = '(' + args
-        if kwargs:
-            arguments += ', ' + kwargs
-        arguments += ')'
+        args = ', '.join(str(i) for i in self.args)
+        kwargs = ', '.join(key + '=' + repr(self.kwargs[key]) for key in self.kwargs)
+        arguments = f"({', '.join([args])}{', '.join([kwargs])})"
         if self.delay:
             arguments += f' delay: {self.delay}'
         return f"job ID: {self.job_id} - {self.func.__name__}{arguments}"
+
+    @staticmethod
+    def create(func, *args, **kwargs):
+        name = kwargs.pop('name', None)
+        return Job(job_id=name, func=func, *args, **kwargs)
 
 
 class JobResult:

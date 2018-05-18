@@ -16,6 +16,7 @@ def get_parser():
     parser.add_argument('subcommand')
     parser.add_argument('-f', action='store')
     parser.add_argument('--secure', '-s', action='store_true')
+    parser.add_argument('--unix', '-us', action='store_true')
     parser.add_argument('--workers', nargs='*')
     parser.add_argument('--random', action='store')
     parser.add_argument('--debug', action='store_true')
@@ -24,19 +25,19 @@ def get_parser():
     return parser
 
 
-def start_worker(host, port, debug, sign_data):
+def start_worker(host, port, debug, sign_data, unix_socket):
     from tasq.remote.master import Master
-    master = Master(host, port, port + 1, debug=debug, sign_data=sign_data)
+    master = Master(host, port, port + 1, debug=debug, sign_data=sign_data, unix_socket=unix_socket)
     master.serve_forever()
 
 
-def start_workers(workers, debug, sign_data):
+def start_workers(workers, debug, sign_data, unix_socket):
     from tasq.remote.master import Masters
-    masters = Masters(workers, debug=debug)
+    masters = Masters(workers, sign_data=sign_data, unix_socket=unix_socket, debug=debug)
     masters.start_procs()
 
 
-def start_random_workers(host, num_workers, debug, sign_data):
+def start_random_workers(host, num_workers, debug, sign_data, unix_socket):
     import random
     from tasq.remote.master import Masters
     workers_set = set()
@@ -49,7 +50,7 @@ def start_random_workers(host, num_workers, debug, sign_data):
         if len(workers_set) == num_workers:
             break
         init_port = port + 2
-    masters = Masters(list(workers_set), debug=debug)
+    masters = Masters(list(workers_set), sign_data=sign_data, unix_socket=unix_socket, debug=debug)
     masters.start_procs()
 
 
@@ -66,10 +67,13 @@ def main():
     host, port = conf['host'], conf['port']
     debug = conf['debug']
     sign_data = conf['sign_data']
+    unix_socket = conf['unix_socket']
     if args.debug:
         debug = True
     if args.secure:
         sign_data = True
+    if args.unix:
+        unix_socket = True
     if args.workers:
         try:
             pairs = conf['workers']
@@ -81,12 +85,12 @@ def main():
                 workers = _translate_peers(pairs)
         else:
             workers = _translate_peers(args.workers or conf['workers'])
-        start_workers(workers, debug, sign_data)
+        start_workers(workers, debug, sign_data, unix_socket)
     if args.subcommand == 'worker':
         if args.addr:
             host = args.addr
         if args.port:
             port = int(args.port)
-        start_worker(host, port, debug, sign_data)
+        start_worker(host, port, debug, sign_data, unix_socket)
     elif args.random:
-        start_random_workers(host, int(args.random), debug, sign_data)
+        start_random_workers(host, int(args.random), debug, sign_data, unix_socket)

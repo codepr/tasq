@@ -32,7 +32,7 @@ class Master:
     """
 
     def __init__(self, host, pull_port, push_port, num_workers=5,
-                 router_class=RoundRobinRouter, sign_data=False, debug=False):
+                 router_class=RoundRobinRouter, sign_data=False, unix_socket=False, debug=False):
         # Host address to bind sockets to
         self._host = host
         # Port for push side (outgoing) of the communication channel
@@ -45,6 +45,9 @@ class Master:
         self._router_class = router_class
         # Send digital signed data
         self._sign_data = sign_data
+        # Unix socket flag, if set to true, unix sockets for interprocess communication will be used
+        # and ports will be used to differentiate push and pull channel
+        self._unix_socket = unix_socket
         # Debug flag
         self._debug = debug
         # Worker's ActorSystem
@@ -116,11 +119,19 @@ class Master:
     def router_class(self):
         return self._router_class
 
+    @property
+    def unix_socket(self):
+        return self._unix_socket
+
     def _bind_sockets(self):
         """Binds PUSH and PULL channel sockets to the respective address:port pairs defined in the
         constructor"""
-        self._pull_socket.bind(f'tcp://{self._host}:{self._pull_port}')
-        self._push_socket.bind(f'tcp://{self._host}:{self._push_port}')
+        if self._unix_socket:
+            self._pull_socket.bind(f'ipc://{self._host}-{self._pull_port}')
+            self._push_socket.bind(f'ipc://{self._host}-{self._push_port}')
+        else:
+            self._pull_socket.bind(f'tcp://{self._host}:{self._pull_port}')
+            self._push_socket.bind(f'tcp://{self._host}:{self._push_port}')
         self._log.info("Listening for jobs on %s:%s", self._host, self._pull_port)
 
     async def _start(self):
@@ -160,11 +171,14 @@ class Master:
 
 class Masters:
 
-    def __init__(self, binds, sign_data=False, debug=False):
+    def __init__(self, binds, sign_data=False, unix_socket=False, debug=False):
         # List of tuples (host, pport, plport) to bind to
         self._binds = binds
         # Digital sign data before send an receive it
         self._sign_data = sign_data
+        # Unix socket flag, if set to true, unix sockets for interprocess communication will be used
+        # and ports will be used to differentiate push and pull channel
+        self._unix_socket = unix_socket
         # Debug flag
         self._debug = debug
         # Processes, equals the len of `binds`
@@ -172,7 +186,8 @@ class Masters:
         self._init_binds()
 
     def _serve_master(self, host, psh_port, pl_port):
-        m = Master(host, psh_port, pl_port, sign_data=self._sign_data, debug=self._debug)
+        m = Master(host, psh_port, pl_port, sign_data=self._sign_data,
+                   unix_socket=self._unix_socket, debug=self._debug)
         m.serve_forever()
 
     def _init_binds(self):
