@@ -1,7 +1,9 @@
 ### 0.9.0
 (May 18, 2018)
 
--
+- Decoupled connection handling from tasq.remote.master and tasq.remote.client into a dedicated
+  module tasq.remote.connection
+
 ### 0.8.0
 (May 17, 2018)
 

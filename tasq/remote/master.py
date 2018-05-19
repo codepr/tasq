@@ -15,7 +15,7 @@ from multiprocessing import Process
 import zmq
 
 from .actors import ResponseActor, WorkerActor
-from .sockets import AsyncCloudPickleContext, CloudPickleContext
+from .connection import ConnectionFactory
 from ..actors.actorsystem import ActorSystem
 from ..actors.routers import RoundRobinRouter, SmallestMailboxRouter
 
@@ -48,6 +48,9 @@ class Master:
         # Unix socket flag, if set to true, unix sockets for interprocess communication will be used
         # and ports will be used to differentiate push and pull channel
         self._unix_socket = unix_socket
+        # Server reference to set up the communication
+        self._server = ConnectionFactory \
+            .make_server(host, push_port, pull_port, sign_data, unix_socket)
         # Debug flag
         self._debug = debug
         # Worker's ActorSystem
@@ -67,25 +70,16 @@ class Master:
             sh.setLevel(logging.INFO)
             self._log.setLevel(logging.INFO)
             self._log.addHandler(sh)
-        # ZMQ settings
-        self._context = CloudPickleContext()
-        self._async_context = AsyncCloudPickleContext()
-        self._pull_socket = self._async_context.socket(zmq.PULL)
-        self._push_socket = self._context.socket(zmq.PUSH)
+        # ZMQ poller settings for async recv
         self._poller = zmq.asyncio.Poller()
-        self._poller.register(self._pull_socket, zmq.POLLIN)
-        # Func data to be used into response actor
-        if self._sign_data:
-            sendfunc = self._push_socket.send_signed
-        else:
-            sendfunc = self._push_socket.send_data
+        self._poller.register(self._server.pull_socket, zmq.POLLIN)
         # Actor router for responses
         self._responses = self._system.router_of(
             num_workers=self._num_workers,
             actor_class=ResponseActor,
             router_class=SmallestMailboxRouter,
             func_name='send',
-            sendfunc=sendfunc
+            sendfunc=self._server.send
         )
         # Generic worker actor router
         self._workers = self._system.router_of(
@@ -126,23 +120,15 @@ class Master:
     def _bind_sockets(self):
         """Binds PUSH and PULL channel sockets to the respective address:port pairs defined in the
         constructor"""
-        if self._unix_socket:
-            self._pull_socket.bind(f'ipc://{self._host}-{self._pull_port}')
-            self._push_socket.bind(f'ipc://{self._host}-{self._push_port}')
-        else:
-            self._pull_socket.bind(f'tcp://{self._host}:{self._pull_port}')
-            self._push_socket.bind(f'tcp://{self._host}:{self._push_port}')
+        self._server.bind()
         self._log.info("Listening for jobs on %s:%s", self._host, self._pull_port)
 
     async def _start(self):
         """Receive jobs from clients with polling"""
         while True:
             events = await self._poller.poll()
-            if self._pull_socket in dict(events):
-                if self._sign_data:
-                    job = await self._pull_socket.recv_signed()
-                else:
-                    job = await self._pull_socket.recv_data()
+            if self._server._pull_socket in dict(events):
+                job = await self._server.recv()
                 res = self._workers.route(job)
                 self._responses.route(res)
 
@@ -154,12 +140,8 @@ class Master:
             task.cancel()
         # Stop the running loop
         self._loop.stop()
-        # Close connected sockets
-        self._pull_socket.close()
-        self._pull_socket.close()
-        # Destroy the contexts
-        self._context.destroy()
-        self._async_context.destroy()
+        # Stop server connection
+        self._server.stop()
 
     def serve_forever(self):
         """Blocking function, schedule the execution of the coroutine waiting for incoming tasks and
@@ -170,6 +152,8 @@ class Master:
 
 
 class Masters:
+
+    """Class to handle a pool of masters on the same node"""
 
     def __init__(self, binds, sign_data=False, unix_socket=False, debug=False):
         # List of tuples (host, pport, plport) to bind to

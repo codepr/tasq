@@ -12,13 +12,11 @@ from concurrent.futures import Future
 from threading import Thread
 from collections import deque
 
-import zmq
-
 from ..job import Job
 from ..actors.routers import RoundRobinRouter
 from ..actors.actorsystem import ActorSystem
 from .actors import ClientWorker
-from .sockets import CloudPickleContext
+from .connection import ConnectionFactory
 
 
 class TasqClientNotConnected(Exception):
@@ -46,12 +44,11 @@ class TasqClient:
         # Unix socket flag, if set to true, unix sockets for interprocess communication will be used
         # and ports will be used to differentiate push and pull channel
         self._unix_socket = unix_socket
+        # Client reference, set up the communication with a Master
+        self._client = ConnectionFactory \
+            .make_client(host, port, self._plport, sign_data, unix_socket)
         # Connection flag
         self._is_connected = False
-        # ZMQ settings
-        self._context = CloudPickleContext()
-        self._task_socket = self._context.socket(zmq.PUSH)
-        self._recv_socket = self._context.socket(zmq.PULL)
         # Results dictionary, mapping task_name -> result
         self._results = {}
         # Pending requests while not connected
@@ -91,10 +88,7 @@ class TasqClient:
         """Gathering subroutine, must be run in another thread to concurrently listen for results
         and store them into a dedicated dictionary"""
         while True:
-            if self._sign_data:
-                job_result = self._recv_socket.recv_signed()
-            else:
-                job_result = self._recv_socket.recv_data()
+            job_result = self._client.recv()
             if not job_result.value and job_result.exc:
                 self._results[job_result.name].set_result(job_result.exc)
             else:
@@ -104,12 +98,7 @@ class TasqClient:
         """Connect to the remote workers, setting up PUSH and PULL channels, respectively used to
         send tasks and to retrieve results back"""
         if not self.is_connected:
-            if self._unix_socket:
-                self._task_socket.connect(f'ipc://{self._host}-{self._port}')
-                self._recv_socket.connect(f'ipc://{self._host}-{self._plport}')
-            else:
-                self._task_socket.connect(f'tcp://{self._host}:{self._port}')
-                self._recv_socket.connect(f'tcp://{self._host}:{self._plport}')
+            self._client.connect()
             self._is_connected = True
             # Start gathering thread
             self._gatherer.start()
@@ -121,21 +110,14 @@ class TasqClient:
     def disconnect(self):
         """Disconnect PUSH and PULL sockets"""
         if self.is_connected:
-            if self._unix_socket:
-                self._task_socket.disconnect(f'ipc://{self._host}-{self._port}')
-                self._recv_socket.disconnect(f'ipc://{self._host}-{self._plport}')
-            else:
-                self._task_socket.disconnect(f'tcp://{self._host}:{self._port}')
-                self._recv_socket.disconnect(f'tcp://{self._host}:{self._plport}')
+            self._client.disconnect()
             self._is_connected = False
 
     def close(self):
         """Close sockets connected to workers, destroy zmq cotext"""
         if self.is_connected:
             self.disconnect()
-        self._task_socket.close()
-        self._recv_socket.close()
-        self._context.destroy()
+        self._client.close()
 
     def pending_results(self):
         """Retrieve pending jobs from the results dictionary"""
@@ -155,10 +137,7 @@ class TasqClient:
             future = Future()
             self._results[name] = future
             # Send job to worker
-            if self._sign_data:
-                self._task_socket.send_signed(job)
-            else:
-                self._task_socket.send_data(job)
+            self._client.send(job)
             return future
 
     def schedule_blocking(self, runnable, *args, **kwargs):
