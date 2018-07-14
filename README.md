@@ -151,6 +151,7 @@ See the [CHANGES](CHANGES.md) file.
 
 ## TODO:
 
+- [ ] Possibility of a broker to persist jobs (classic task queue celery like)
 - [ ] Check for pynacl for security on pickled data
 - [ ] Tests
 - [ ] A meaningful client pool

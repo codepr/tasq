@@ -10,11 +10,12 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 
 import sys
 import uuid
-import time
 import signal
 import logging
 from threading import Thread
 from multiprocessing import Process
+
+from .remote.sockets import decompress_and_unpickle
 
 
 _fmt = logging.Formatter('%(message)s', '%Y-%m-%d %H:%M:%S')
@@ -22,7 +23,8 @@ _fmt = logging.Formatter('%(message)s', '%Y-%m-%d %H:%M:%S')
 
 class Worker:
 
-    """Generic worker class, contains a job queue and handle incoming jobs for execution"""
+    """Generic worker class, contains a job queue and handle incoming jobs for execution, should be
+    mixed int with Thread or Process class"""
 
     def __init__(self, job_queue, completed_jobs, name=u'', debug=False, *args, **kwargs):
         # Process name, defaulted to a uuid
@@ -69,43 +71,65 @@ class Worker:
     def run(self):
         """Start execution of all jobs in the job_queue"""
         while True:
-            self._last_job = job = self._job_queue.get_task()
-            tic = time.time()
+            self._done = False
+            self._last_job = None
+            job = self._job_queue.get_job()
+            self._last_job = job
+            # Check for poison pill
+            if job is None:
+                break
+            self._log.debug("%s - executing job %s", self.name, job.job_id)
             self._completed_jobs.put(job.execute())
+            self._log.debug(
+                "%s - Job %s succesfully executed in %s s",
+                self.name,
+                job.job_id,
+                job.execution_time()
+            )
+            self._job_queue.task_done()
             self._done = True
-            self._log.debug("Finished job in %s s", (time.time() - tic))
 
     def exit(self, sgl, frm):
         """Handle exit signals"""
-        if self._done is False and self._last_job is not None:
+        if not self._done and self._last_job is not None:
             self._job_queue.put(self._last_job)
-            self._log.debug("Re added interrupted job")
+            self._log.debug("%s - Re added interrupted job", self.name)
+        self._log.debug("%s - Exiting", self.name)
+        self._job_queue.put(None)
         sys.exit()
 
 
 class ThreadWorker(Worker, Thread):
 
-    """Generic worker process, contains a job queue and handle incoming jobs for execution"""
+    """Worker unit based on `threading.Thread` superclass, useful if the majority of the jobs are
+    I/O bound"""
 
-    def __init__(self, job_queue, name=u'', debug=False, daemon=True):
-        super().__init__(job_queue, name, debug, daemon)
+    pass
 
 
 class ProcessWorker(Worker, Process):
 
-    def __init__(self, job_queue, name=u'', debug=False, daemon=True):
-        # Process name, defaulted to a uuid
-        self._name = name or uuid.uuid4()
-        # A joinable job queue
-        self.job_queue = job_queue
-        # Debug flag
-        self._debug = debug
-        super().__init__(job_queue, name, debug, daemon)
+    """Worker unit based on `multiprocessing.Process` superclass, meant to be employed in case the
+    majority of the jobs are CPU bound"""
 
     def run(self):
-        from .remote.sockets import decompress_and_unpickle
         while True:
-            self._last_job = job = decompress_and_unpickle(self.job_queue.get())
-            print(type(job))
+            # Need to decompress and unpickle data here cause the function contained in the job
+            # could be not defined in the __main__ module being the worker optionally run in a
+            # remote machine
+            self._done = False
+            self._last_job = None
+            job = decompress_and_unpickle(self._job_queue.get())
+            self._last_job = job
+            self._log.debug("%s - executing job %s", self.name, job.job_id)
             response = job.execute()
+            self._job_queue.task_done()
+            self._log.debug(
+                "%s - Job %s succesfully executed in %s s",
+                self.name,
+                job.job_id,
+                job.execution_time()
+            )
+            # Push the completed job in the result queue ready to be answered to the requesting
+            # client
             self._completed_jobs.put(response)

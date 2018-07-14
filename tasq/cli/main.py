@@ -8,7 +8,13 @@ tasq.cli.main.py
 from __future__ import absolute_import, division, print_function, unicode_literals
 
 import argparse
+from enum import Enum
 from ..settings import get_config
+
+
+class WorkerType(Enum):
+    ActorWorker = 'actor'
+    ProcessWorker = 'process'
 
 
 def get_parser():
@@ -16,8 +22,10 @@ def get_parser():
     parser.add_argument('subcommand')
     parser.add_argument('-f', action='store')
     parser.add_argument('--secure', '-s', action='store_true')
-    parser.add_argument('--unix', '-us', action='store_true')
+    parser.add_argument('--unix', '-u', action='store_true')
     parser.add_argument('--workers', nargs='*')
+    parser.add_argument('--worker-type', action='store')
+    parser.add_argument('--num-workers', action='store')
     parser.add_argument('--random', action='store')
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--addr', '-a', action='store')
@@ -25,10 +33,14 @@ def get_parser():
     return parser
 
 
-def start_worker(host, port, debug, sign_data, unix_socket):
-    from tasq.remote.master import Master, ProcessMaster
-    # master = Master(host, port, port + 1, debug=debug, sign_data=sign_data, unix_socket=unix_socket)
-    master = ProcessMaster(host, port, port + 1, debug=debug, sign_data=sign_data, unix_socket=unix_socket)
+def start_worker(host, port, debug, sign_data, unix_socket, worker_type):
+    from tasq.remote.master import ActorMaster, ProcessMaster
+    if worker_type == WorkerType.ActorWorker:
+        master = ActorMaster(host, port, port + 1, debug=debug,
+                             sign_data=sign_data, unix_socket=unix_socket)
+    else:
+        master = ProcessMaster(host, port, port + 1, debug=debug,
+                               sign_data=sign_data, unix_socket=unix_socket)
     master.serve_forever()
 
 
@@ -69,12 +81,22 @@ def main():
     debug = conf['debug']
     sign_data = conf['sign_data']
     unix_socket = conf['unix_socket']
+    num_workers = 4
+    worker_type = WorkerType.ActorWorker
     if args.debug:
         debug = True
     if args.secure:
         sign_data = True
     if args.unix:
         unix_socket = True
+    if args.num_workers:
+        num_workers = args.num_workers
+    if args.worker_type:
+        try:
+            worker_type = WorkerType(args.worker_type)
+        except ValueError:
+            print(f"{args.worker_type} is not a valid type: use either process or actor.  Fallbacking"
+                  " to actor")
     if args.workers:
         try:
             pairs = conf['workers']
@@ -92,6 +114,6 @@ def main():
             host = args.addr
         if args.port:
             port = int(args.port)
-        start_worker(host, port, debug, sign_data, unix_socket)
+        start_worker(host, port, debug, sign_data, unix_socket, worker_type)
     elif args.random:
         start_random_workers(host, int(args.random), debug, sign_data, unix_socket)

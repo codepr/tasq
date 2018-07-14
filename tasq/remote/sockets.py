@@ -73,10 +73,8 @@ class CloudPickleSocket(zmq.Socket):
         """Receive data from the socket, deserialize and decompress it with cloudpickle"""
         zipped_data = self.recv_pyobj(flags)
         if unpickle:
-            data = decompress_and_unpickle(zipped_data)
-        else:
-            data = zipped_data
-        return data
+            return decompress_and_unpickle(zipped_data)
+        return zipped_data
 
     def recv_signed(self, unpickle=True, flags=0):
         """Receive data from the socket, check the digital signature in order to verify the
@@ -122,10 +120,8 @@ class AsyncCloudPickleSocket(Socket):
         cloudpickle"""
         zipped_data = await self.recv_pyobj(flags)
         if unpickle:
-            data = decompress_and_unpickle(zipped_data)
-        else:
-            data = zipped_data
-        return data
+            return decompress_and_unpickle(zipped_data)
+        return zipped_data
 
     async def recv_signed(self, unpickle=True, flags=0):
         """Receive data from the socket asynchronously, check the digital signature in order to

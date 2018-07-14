@@ -26,7 +26,17 @@ class WorkerActor(Actor):
     def submit(self, job):
         """Submits a job object to the run loop of the actor, returning immediatly a `Result` object
         without having to wait for it to be filled with the effective processing result of the
-        job"""
+        job
+
+        Args:
+        -----
+        :type job: tasq.Job
+        :param job: The `tasq.Job` object containing the function to be executed in the current
+                    actor
+
+        :return: A `tasq.Result` object, future-like object that will contain the result of the job
+                 execution
+        """
         self._log.debug(
             "Sending message to actor %s - pending jobs %s",
             self.name,
@@ -100,10 +110,22 @@ class TimedActor(Actor):
     def submit(self, job, eta):
         """Submit a time-scheduled job, to be executed every defined interval. Eta define the
         interval of the repeating task, and can be specified as an int, meaning seconds, or as
-        string speicifying the measure unit. E.g.
+        string specifying the measure unit. E.g.
         4s -> Job executed every 4 seconds
         6m -> Job executed every 6 minutes
         8h -> Job executed every 8 hours
+
+        Args:
+        -----
+        :type job: tasq.Job
+        :param job: The `tasq.Job` object containing the function to be executed in the current
+                    actor
+
+        :type eta: str
+        :param eta: The time that pass in every tic of the repeating interval
+
+        :return: A `tasq.Result` object, future-like object that will contain the result of the job
+                 execution
         """
         result = Result()
         multiples = {'h': 60 * 60, 'm': 60, 's': 1}
@@ -156,7 +178,17 @@ class ClientWorker(Actor):
 
     def submit(self, job):
         """Create a `Future` object and enqueue it into the mailbox with the associated job, then
-        return it to the caller"""
+        return it to the caller
+
+        Args:
+        -----
+        :type job: tasq.Job
+        :param job: The `tasq.Job` object containing the function to be executed in the current
+                    actor
+
+        :return: A `tasq.Result` object, future-like object that will contain the result of the job
+                 execution
+        """
         future = Future()
         self.send((job, future))
         return future

@@ -114,6 +114,7 @@ class Job:
         args = ', '.join(str(i) for i in self.args)
         kwargs = ', '.join(key + '=' + repr(self.kwargs[key]) for key in self.kwargs)
         arguments = f"({', '.join([args])}{', '.join([kwargs])})"
+        arguments = (arguments[:80] + '...)') if len(arguments) > 80 else arguments
         if self.delay:
             arguments += f' delay: {self.delay}'
         return f"job ID: {self.job_id} - {self.func.__name__}{arguments}"

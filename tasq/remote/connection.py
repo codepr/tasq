@@ -206,12 +206,12 @@ class Connection:
         else:
             self._push_socket.send_signed(data, flags)
 
-    def recv(self, flags=0):
+    def recv(self, unpickle=True, flags=0):
         """Receive data from the PULL socket, if a secure flag is set it checks for integrity of the
         received data"""
         if self._secure is False:
-            return self._pull_socket.recv_data(flags)
-        return self._pull_socket.socket.recv_signed(flags)
+            return self._pull_socket.recv_data(unpickle, flags)
+        return self._pull_socket.socket.recv_signed(unpickle, flags)
 
 
 class UnixConnection(Connection):

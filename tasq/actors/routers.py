@@ -7,16 +7,19 @@ This module contains all routers used as workers for all tasks incoming from rem
 
 from __future__ import absolute_import, division, print_function, unicode_literals
 
+from abc import ABCMeta, abstractmethod
 
-class Router:
+
+class Router(metaclass=ABCMeta):
 
     """Oversimplified router system to enroute messages to a pool of workers actor, by subclassing
     this it is possible to add different heuristic of message routing. If the len of the workers
     pool is just 1, ignore every defined heuristic and send the message to that only worker."""
 
-    def __init__(self, workers, func_name=u'submit'):
+    def __init__(self, workers, func_name=u'submit', *args, **kwargs):
         self._workers = workers
         self._func_name = func_name
+        super().__init__(*args, **kwargs)
 
     @property
     def workers(self):
@@ -33,6 +36,7 @@ class Router:
             func = getattr(self._workers[idx], self._func_name)
             return func(msg)
 
+    @abstractmethod
     def _route_message(self, msg):
         """To be defined on subclass"""
         pass

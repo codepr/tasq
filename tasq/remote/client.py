@@ -12,6 +12,8 @@ from concurrent.futures import Future
 from threading import Thread
 from collections import deque
 
+import zmq
+
 from ..job import Job
 from ..actors.routers import RoundRobinRouter
 from ..actors.actorsystem import ActorSystem
@@ -84,11 +86,30 @@ class TasqClient:
     def unix_socket(self):
         return self._unix_socket
 
+    def __enter__(self):
+        if not self.is_connected:
+            self.connect()
+        return self
+
+    def __exit__(self, exc_type, exc_value, exc_traceback):
+        while self.pending_results():
+            pass
+        self.close()
+
+    def __repr__(self):
+        socket_type = 'tcp' if not self.unix_socket else 'unix'
+        status = 'connected' if self.is_connected else 'disconnected'
+        return f"<TasqClient socket={socket_type} push={self.host}:{self.port} " \
+               f"pull={self.host}:{self.plport} status={status}>"
+
     def _gather_results(self):
         """Gathering subroutine, must be run in another thread to concurrently listen for results
         and store them into a dedicated dictionary"""
         while True:
-            job_result = self._client.recv()
+            try:
+                job_result = self._client.recv()
+            except (zmq.error.ContextTerminated, zmq.error.ZMQError):
+                pass
             if not job_result.value and job_result.exc:
                 self._results[job_result.name].set_result(job_result.exc)
             else:
@@ -126,7 +147,15 @@ class TasqClient:
     def schedule(self, runnable, *args, **kwargs):
         """Schedule a job to a remote worker, without blocking. Require a runnable task, and
         arguments to be passed with, cloudpickle will handle dependencies shipping. Optional it is
-        possible to give a name to the job, otherwise a UUID will be defined"""
+        possible to give a name to the job, otherwise a UUID will be defined
+
+        Args:
+        -----
+        :type runnable: func
+        :param runnable: A function to be executed on a worker by enqueing it
+
+        :return: A future eventually containing the result of the func execution
+        """
         name = kwargs.pop('name', u'')
         job = Job(name, runnable, *args, **kwargs)
         # If not connected enqueue for execution at the first connection
@@ -144,7 +173,15 @@ class TasqClient:
         """Schedule a job to a remote worker wating for the result to be ready. Like `schedule` it
         require a runnable task, and arguments to be passed with, cloudpickle will handle
         dependencies shipping. Optional it is possible to give a name to the job, otherwise a UUID
-        will be defined"""
+        will be defined
+
+        Args:
+        -----
+        :type runnable: func
+        :param runnable: A function to be executed on a worker by enqueing it
+
+        :return: The result of the func execution
+        """
         if not self.is_connected:
             raise TasqClientNotConnected('Client not connected to no worker')
         timeout = kwargs.pop('timeout', None)
@@ -189,6 +226,9 @@ class TasqClientPool:
         """Lazily check for new results and add them to the list of dictionaries before returning
         it"""
         return self._results
+
+    def __iter__(self):
+        return self._clients.__iter__()
 
     def shutdown(self):
         """Close all connected clients"""

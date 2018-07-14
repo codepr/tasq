@@ -13,7 +13,7 @@ import asyncio
 import logging
 from threading import Thread
 from abc import ABCMeta, abstractmethod
-from multiprocessing import Process, JoinableQueue
+from multiprocessing import Process, JoinableQueue, cpu_count
 import zmq
 
 from .actors import ResponseActor, WorkerActor
@@ -26,6 +26,10 @@ from ..actors.routers import RoundRobinRouter, SmallestMailboxRouter
 _fmt = logging.Formatter('%(message)s', '%Y-%m-%d %H:%M:%S')
 
 
+def max_workers():
+    return (cpu_count() * 2) + 1
+
+
 class Master(metaclass=ABCMeta):
 
     """
@@ -35,7 +39,7 @@ class Master(metaclass=ABCMeta):
     """
 
     def __init__(self, host, pull_port, push_port,
-                 num_workers=5, sign_data=False, unix_socket=False, debug=False):
+                 num_workers=max_workers(), sign_data=False, unix_socket=False, debug=False):
         # Host address to bind sockets to
         self._host = host
         # Port for push side (outgoing) of the communication channel
@@ -99,6 +103,7 @@ class Master(metaclass=ABCMeta):
         return self._sign_data
 
     def _init_server(self):
+        """Init the server placeholder"""
         self._server = ConnectionFactory \
             .make_server(self.host, self.push_port, self.pull_port, self.sign_data, self.unix_socket)
 
@@ -114,7 +119,7 @@ class Master(metaclass=ABCMeta):
 
     def _stop(self):
         """Stops the loop after canceling all remaining tasks"""
-        print("\nStopping..")
+        self._log.info("\nStopping..")
         # Cancel pending tasks (opt)
         for task in asyncio.Task.all_tasks():
             task.cancel()
@@ -139,7 +144,7 @@ class ActorMaster(Master):
     well
     """
 
-    def __init__(self, host, pull_port, push_port, num_workers=5,
+    def __init__(self, host, pull_port, push_port, num_workers=max_workers(),
                  router_class=RoundRobinRouter, sign_data=False, unix_socket=False, debug=False):
         super().__init__(host, pull_port, push_port, num_workers, sign_data, unix_socket, debug)
         # Routing type
@@ -164,6 +169,7 @@ class ActorMaster(Master):
             router_class=self._router_class,
             response_actor=self._responses
         )
+        self._log.info("Worker type: Actor")
 
     async def _start(self):
         """Receive jobs from clients with polling"""
@@ -179,21 +185,30 @@ class ProcessMaster(Master):
 
     """
     Master process, handle requests asynchronously from clients and delegate processing of
-    incoming tasks to worker actors, responses are sent back to clients by using a pool of actors as
-    well
+    incoming tasks to worker processes, responses are sent back to clients by using a dedicated
+    thread
     """
 
     def __init__(self, host, pull_port, push_port,
-                 num_workers=5, sign_data=False, unix_socket=False, debug=False):
+                 num_workers=max_workers(), sign_data=False, unix_socket=False, debug=False):
         super().__init__(host, pull_port, push_port, num_workers, sign_data, unix_socket, debug)
+        # Result queue populated by workers
         self._completed_jobs = JoinableQueue()
-        self._jobqueue = JobQueue(self._completed_jobs)
+        # Job queue passed in to workers
+        self._jobqueue = JobQueue(self._completed_jobs, num_workers=num_workers, debug=debug)
+        # Dedicated thread to client responses
         self._response_thread = Thread(target=self._respond, daemon=True)
         self._response_thread.start()
+        self._log.info("Worker type: Process")
 
     def _respond(self):
+        """Spin a loop and respond to client with whatever results arrive in the completed_jobs
+        queue"""
         while True:
             response = self._completed_jobs.get()
+            # Poison pill check
+            if response is None:
+                break
             self._server.send(response)
 
     async def _start(self):
@@ -202,7 +217,14 @@ class ProcessMaster(Master):
             events = await self._poller.poll()
             if self._server._pull_socket in dict(events):
                 pickled_job = await self._server.recv(unpickle=False)
-                self._jobqueue.add_task(pickled_job)
+                self._jobqueue.add_job(pickled_job)
+
+    def _stop(self):
+        """Stops the running response threads and the pool of processes"""
+        super()._stop()
+        # Use a poison pill to stop the loop
+        self._completed_jobs.put(None)
+        self._response_thread.join()
 
     def serve_forever(self):
         """Blocking function, schedule the execution of the coroutine waiting for incoming tasks and
