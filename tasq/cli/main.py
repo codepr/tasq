@@ -26,8 +26,9 @@ def get_parser():
 
 
 def start_worker(host, port, debug, sign_data, unix_socket):
-    from tasq.remote.master import Master
-    master = Master(host, port, port + 1, debug=debug, sign_data=sign_data, unix_socket=unix_socket)
+    from tasq.remote.master import Master, ProcessMaster
+    # master = Master(host, port, port + 1, debug=debug, sign_data=sign_data, unix_socket=unix_socket)
+    master = ProcessMaster(host, port, port + 1, debug=debug, sign_data=sign_data, unix_socket=unix_socket)
     master.serve_forever()
 
 

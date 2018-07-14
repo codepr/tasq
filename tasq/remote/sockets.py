@@ -69,12 +69,16 @@ class CloudPickleSocket(zmq.Socket):
         signed = sign(conf['sharedkey'].encode(), zipped_data)
         return self.send_pyobj((signed, zipped_data), flags=flags)
 
-    def recv_data(self, flags=0):
+    def recv_data(self, unpickle=True, flags=0):
         """Receive data from the socket, deserialize and decompress it with cloudpickle"""
         zipped_data = self.recv_pyobj(flags)
-        return decompress_and_unpickle(zipped_data)
+        if unpickle:
+            data = decompress_and_unpickle(zipped_data)
+        else:
+            data = zipped_data
+        return data
 
-    def recv_signed(self, flags=0):
+    def recv_signed(self, unpickle=True, flags=0):
         """Receive data from the socket, check the digital signature in order to verify the
         integrity of data and the that the sender is allowed to talk to us, deserialize and
         decompress it with cloudpickle"""
@@ -86,7 +90,9 @@ class CloudPickleSocket(zmq.Socket):
             # TODO log here
             raise
         else:
-            return decompress_and_unpickle(pickled_data)
+            if unpickle:
+                return decompress_and_unpickle(pickled_data)
+            return pickled_data
 
 
 class CloudPickleContext(Context):
@@ -111,13 +117,17 @@ class AsyncCloudPickleSocket(Socket):
         signed = sign(conf['sharedkey'].encode(), zipped_data)
         return await self.send_pyobj((signed, zipped_data), flags=flags)
 
-    async def recv_data(self, flags=0):
+    async def recv_data(self, unpickle=True, flags=0):
         """Receive data from the socket asynchronously, deserialize and decompress it with
         cloudpickle"""
         zipped_data = await self.recv_pyobj(flags)
-        return decompress_and_unpickle(zipped_data)
+        if unpickle:
+            data = decompress_and_unpickle(zipped_data)
+        else:
+            data = zipped_data
+        return data
 
-    async def recv_signed(self, flags=0):
+    async def recv_signed(self, unpickle=True, flags=0):
         """Receive data from the socket asynchronously, check the digital signature in order to
         verify the integrity of data and the that the sender is allowed to talk to us, deserialize
         and decompress it with cloudpickle"""
@@ -129,7 +139,9 @@ class AsyncCloudPickleSocket(Socket):
             # TODO log here
             raise
         else:
-            return decompress_and_unpickle(pickled_data)
+            if unpickle:
+                return decompress_and_unpickle(pickled_data)
+            return pickled_data
 
 
 class AsyncCloudPickleContext(Context):

@@ -8,39 +8,37 @@ Contains naive implementation of a joinable queue for execution of tasks in a si
 
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-from queue import Queue
+from multiprocessing import get_context
+from multiprocessing.queues import JoinableQueue
 
 from .job import Job
-from .worker import Worker
+from .worker import ProcessWorker
 
 
-class LocalJobQueue(Queue):
+class JobQueue(JoinableQueue):
 
-    """Queue for multithreaded execution of task on a single node"""
-
-    def __init__(self, result_queue, num_workers=5):
-        Queue.__init__(self)
+    def __init__(self, completed_jobs, num_workers=5, start_method='fork'):
+        ctx = get_context(start_method)
+        super().__init__(ctx=ctx)
         self._num_workers = num_workers
-        self._result_queue = result_queue
-        self._start_workers()
+        self._completed_jobs = completed_jobs
+        self.start_workers()
 
     @property
-    def result_queue(self):
-        return self._result_queue
+    def completed_jobs(self):
+        return self._completed_jobs
 
     @property
     def num_workers(self):
         return self._num_workers
 
-    def add_task(self, task, *args, **kwargs):
-        name = kwargs.get('name', None)
-        self.put(Job(name, task, *args, **kwargs))
+    def add_task(self, job):
+        self.put(job)
 
     def get_task(self):
         return self.get()
 
-    def _start_workers(self):
+    def start_workers(self):
         for _ in range(self.num_workers):
-            w = Worker(self)
-            w.daemon = True
+            w = ProcessWorker(self, self.completed_jobs)
             w.start()
