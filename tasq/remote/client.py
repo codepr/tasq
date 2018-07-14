@@ -8,6 +8,7 @@ Client part of the application, responsible for scheduling jobs to local or remo
 
 from __future__ import absolute_import, division, print_function, unicode_literals
 
+import logging
 from concurrent.futures import Future
 from threading import Thread
 from collections import deque
@@ -19,6 +20,9 @@ from ..actors.routers import RoundRobinRouter
 from ..actors.actorsystem import ActorSystem
 from .actors import ClientWorker
 from .connection import ConnectionFactory
+
+
+_fmt = logging.Formatter('%(message)s', '%Y-%m-%d %H:%M:%S')
 
 
 class TasqClientNotConnected(Exception):
@@ -34,7 +38,7 @@ class TasqClient:
     of calling tasks awaiting for results and an asynchronous one which collect results in a
     dedicated dictionary"""
 
-    def __init__(self, host, port, plport=None, sign_data=False, unix_socket=False):
+    def __init__(self, host, port, plport=None, sign_data=False, unix_socket=False, debug=False):
         # Host address of a remote master to connect to
         self._host = host
         # Port for push side (outgoing) of the communication channel
@@ -57,6 +61,20 @@ class TasqClient:
         self._pending = deque()
         # Gathering results, making the client unblocking
         self._gatherer = Thread(target=self._gather_results, daemon=True)
+        # Debug flag
+        self._debug = debug
+        # Logging settings
+        self._log = logging.getLogger(f'{__name__}.{self._host}.{self._port}')
+        sh = logging.StreamHandler()
+        sh.setFormatter(_fmt)
+        if self._debug is True:
+            sh.setLevel(logging.DEBUG)
+            self._log.setLevel(logging.DEBUG)
+            self._log.addHandler(sh)
+        else:
+            sh.setLevel(logging.INFO)
+            self._log.setLevel(logging.INFO)
+            self._log.addHandler(sh)
 
     @property
     def host(self):
@@ -160,6 +178,7 @@ class TasqClient:
         job = Job(name, runnable, *args, **kwargs)
         # If not connected enqueue for execution at the first connection
         if not self.is_connected:
+            self._log.debug("Client not connected, appending job to pending queue.")
             self._pending.appendleft(job)
         else:
             # Create a Future and return it, _gatherer thread will set the result once received

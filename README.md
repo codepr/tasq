@@ -6,6 +6,13 @@ executed on local or remote workers. Can be seen as a Proof of Concept leveragin
 cloudpickle serialization capabilities as well as a very basic actor system to handle different
 loads of work from connecting clients.
 
+The main advantage of using a brokerless task queue, beside latencies is the possibility of launch
+and forget some workers on a network and schedule jobs to them without having them to know nothing
+about the code that they will run, allowing to define tasks withouth dinamically, without stopping
+the workers. Obviously this approach open up more risks of malicious code to be injected to the
+workers, currently the only security measure is to sign serialized data passed to workers, but the
+entire system is meant to be used in a safe environment.
+
 
 ## Quickstart
 
@@ -87,6 +94,15 @@ filesystem
 $ tq --worker -f path/to/conf/conf.json
 ```
 
+A worker can be started by specifying the type of sub worker we want:
+
+```
+$ tq --worker --worker-type process
+```
+Using `process` type subworker it is possible to use a distributed queue for parallel execution,
+usefull when the majority of the jobs are CPU bound instead of I/O bound (actors are preferable in
+that case).
+
 Multiple workers can be started in the same node, this will start two worker process ready to
 receive jobs.
 
@@ -114,10 +130,11 @@ Essentially it is possible to start workers across the nodes of a network withou
 and every single node can host multiple workers by setting differents ports for the communication.
 Each worker, once started, support multiple connections from clients and is ready to accept tasks.
 
-Once a worker receive a job from a client, it demand its execution to dedicated actor, usually
-selected from a pool according to a defined routing strategy (e.g. Round robin, Random routing or
-Smallest mailbox which should give a trivial indication of the workload of each actor and select the
-one with minimum pending tasks to execute).
+Once a worker receive a job from a client, it demand its execution to dedicated actor or process,
+usually selected from a pool according to a defined routing strategy in the case of actor (e.g.
+Round robin, Random routing or Smallest mailbox which should give a trivial indication of the
+workload of each actor and select the one with minimum pending tasks to execute) or using a simple
+distributed queue across a pool of process in producer-consumer way.
 
 ![Tasq master-workers arch](static/worker_model_2.png)
 
