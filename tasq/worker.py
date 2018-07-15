@@ -13,15 +13,16 @@ import uuid
 import signal
 import logging
 from threading import Thread
+from abc import ABCMeta, abstractmethod
 from multiprocessing import Process
 
-from .remote.sockets import decompress_and_unpickle
+from .remote.sockets import pickle_and_compress, decompress_and_unpickle
 
 
 _fmt = logging.Formatter('%(message)s', '%Y-%m-%d %H:%M:%S')
 
 
-class Worker:
+class Worker(metaclass=ABCMeta):
 
     """Generic worker class, contains a job queue and handle incoming jobs for execution, should be
     mixed int with Thread or Process class"""
@@ -68,26 +69,9 @@ class Worker:
     def done(self):
         return self._done
 
+    @abstractmethod
     def run(self):
-        """Start execution of all jobs in the job_queue"""
-        while True:
-            self._done = False
-            self._last_job = None
-            job = self._job_queue.get_job()
-            self._last_job = job
-            # Check for poison pill
-            if job is None:
-                break
-            self._log.debug("%s - executing job %s", self.name, job.job_id)
-            self._completed_jobs.put(job.execute())
-            self._log.debug(
-                "%s - Job %s succesfully executed in %s s",
-                self.name,
-                job.job_id,
-                job.execution_time()
-            )
-            self._job_queue.task_done()
-            self._done = True
+        pass
 
     def exit(self, sgl, frm):
         """Handle exit signals"""
@@ -99,18 +83,10 @@ class Worker:
         sys.exit()
 
 
-class ThreadWorker(Worker, Thread):
+class QueueWorker(Worker):
 
-    """Worker unit based on `threading.Thread` superclass, useful if the majority of the jobs are
-    I/O bound"""
-
-    pass
-
-
-class ProcessWorker(Worker, Process):
-
-    """Worker unit based on `multiprocessing.Process` superclass, meant to be employed in case the
-    majority of the jobs are CPU bound"""
+    """Worker unit based on `multiprocessing.JoinableQueue`, used to pass jobs to workers in a
+    producer-consumer like way"""
 
     def run(self):
         while True:
@@ -119,17 +95,70 @@ class ProcessWorker(Worker, Process):
             # remote machine
             self._done = False
             self._last_job = None
-            job = decompress_and_unpickle(self._job_queue.get())
+            zipped_job = self._job_queue.get()
+            # Poison pill check
+            if zipped_job is None:
+                break
+            job = decompress_and_unpickle(zipped_job)
             self._last_job = job
             self._log.debug("%s - executing job %s", self.name, job.job_id)
-            response = job.execute()
-            self._job_queue.task_done()
-            self._log.debug(
-                "%s - Job %s succesfully executed in %s s",
-                self.name,
-                job.job_id,
-                job.execution_time()
-            )
-            # Push the completed job in the result queue ready to be answered to the requesting
-            # client
-            self._completed_jobs.put(response)
+            if 'eta' in job.kwargs:
+                eta = job.kwargs.pop('eta')
+                multiples = {'h': 60 * 60, 'm': 60, 's': 1}
+                if isinstance(eta, int):
+                    delay = eta
+                else:
+                    try:
+                        delay = int(eta)
+                    except ValueError:
+                        delay = multiples[eta[-1]] * int(eta[:-1])
+                job.add_delay(delay)
+                response = job.execute()
+                self._job_queue.task_done()
+                self._log.debug(
+                    "%s - Job %s succesfully executed in %s s",
+                    self.name,
+                    job.job_id,
+                    job.execution_time()
+                )
+                self._log.debug(
+                    '%s - Timed job %s result = %s',
+                    self.name,
+                    job.job_id,
+                    response.value
+                )
+                # Push the completed job in the result queue ready to be answered to the requesting
+                # client
+                self._completed_jobs.put(response)
+                # Re enter the job in the queue
+                job.kwargs['eta'] = str(job.delay) + 's'
+                self._job_queue.put(pickle_and_compress(job))
+            else:
+                response = job.execute()
+                self._job_queue.task_done()
+                self._log.debug(
+                    "%s - Job %s succesfully executed in %s s",
+                    self.name,
+                    job.job_id,
+                    job.execution_time()
+                )
+                # Push the completed job in the result queue ready to be answered to the requesting
+                # client
+                self._completed_jobs.put(response)
+            self._done = True
+
+
+class ThreadQueueWorker(QueueWorker, Thread):
+
+    """Worker unit based on `threading.Thread` superclass, useful if the majority of the jobs are
+    I/O bound"""
+
+    pass
+
+
+class ProcessQueueWorker(QueueWorker, Process):
+
+    """Worker unit based on `multiprocessing.Process` superclass, meant to be employed in case the
+    majority of the jobs are CPU bound"""
+
+    pass

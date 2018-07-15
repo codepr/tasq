@@ -10,10 +10,12 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import argparse
 from enum import Enum
 from ..settings import get_config
+from ..worker import ThreadQueueWorker
 
 
 class WorkerType(Enum):
     ActorWorker = 'actor'
+    ThreadWorker = 'thread'
     ProcessWorker = 'process'
 
 
@@ -34,13 +36,16 @@ def get_parser():
 
 
 def start_worker(host, port, debug, sign_data, unix_socket, worker_type):
-    from tasq.remote.master import ActorMaster, ProcessMaster
+    from tasq.remote.master import ActorMaster, QueueMaster
     if worker_type == WorkerType.ActorWorker:
         master = ActorMaster(host, port, port + 1, debug=debug,
                              sign_data=sign_data, unix_socket=unix_socket)
+    elif worker_type == WorkerType.ThreadWorker:
+        master = QueueMaster(host, port, port + 1, debug=debug, worker_class=ThreadQueueWorker,
+                             sign_data=sign_data, unix_socket=unix_socket)
     else:
-        master = ProcessMaster(host, port, port + 1, debug=debug,
-                               sign_data=sign_data, unix_socket=unix_socket)
+        master = QueueMaster(host, port, port + 1, debug=debug,
+                             sign_data=sign_data, unix_socket=unix_socket)
     master.serve_forever()
 
 

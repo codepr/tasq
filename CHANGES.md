@@ -1,10 +1,17 @@
+### 1.0.1
+(Jul 15, 2018)
+
+- Added repeated jobs capabilities to process/thread queue workers too (Previously only Actor
+    worker could achieve that)
+- Fixed some bugs, renamed `ProcessWorker -> QueueWorker` and `ProcessMaster -> QueueMaster`
+
 ### 1.0.0
 (Jul 14, 2018)
 
 - Added the possibility to choose the type of workers of each master process, can be either a pool
   of actors or a pool of processes, based on the nature of the majority of the jobs that need to be
   executed. A majority of I/O bound operations should stick to `ActorMaster` type workers, in case
-  of CPU bound tasks `ProcessMaster` should give better results.
+  of CPU bound tasks `QueueMaster` should give better results.
 
 ### 0.9.0
 (May 18, 2018)

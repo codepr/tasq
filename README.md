@@ -8,10 +8,11 @@ loads of work from connecting clients.
 
 The main advantage of using a brokerless task queue, beside latencies is the possibility of launch
 and forget some workers on a network and schedule jobs to them without having them to know nothing
-about the code that they will run, allowing to define tasks withouth dinamically, without stopping
-the workers. Obviously this approach open up more risks of malicious code to be injected to the
-workers, currently the only security measure is to sign serialized data passed to workers, but the
-entire system is meant to be used in a safe environment.
+about the code that they will run, allowing to define tasks dinamically, without stopping the
+workers. Obviously this approach open up more risks of malicious code to be injected to the workers,
+currently the only security measure is to sign serialized data passed to workers, but the entire
+system is meant to be used in a safe environment.
+
 
 
 ## Quickstart
@@ -174,7 +175,7 @@ See the [CHANGES](CHANGES.md) file.
 - [ ] A meaningful client pool
 - [x] Debugging multiprocessing start for more workers on the same node
 - [ ] Refactor of existing code and corner case handling (Still very basic implementation of even
-  [ ] simple heuristics)
+      simple heuristics)
 - [x] Delayed tasks and scheduled cron tasks
 - [x] Configuration handling throughout the code
 - [x] Better explanation of the implementation and actors defined

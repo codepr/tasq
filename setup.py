@@ -8,7 +8,7 @@ required = ['zmq', 'cloudpickle']
 
 setup(
     name='tasq',
-    version='1.0.0',
+    version='1.0.1',
     description='A simple brokerless task queue implementation leveraging zmq and a naive '
                 'implementation of the actor model to enqeue jobs on local or remote processes',
     long_description=readme,

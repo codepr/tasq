@@ -117,8 +117,8 @@ class TasqClient:
     def __repr__(self):
         socket_type = 'tcp' if not self.unix_socket else 'unix'
         status = 'connected' if self.is_connected else 'disconnected'
-        return f"<TasqClient socket={socket_type} push={self.host}:{self.port} " \
-               f"pull={self.host}:{self.plport} status={status}>"
+        return f"<TasqClient worker=({socket_type}://{self.host}:{self.port}, " \
+               f"{socket_type}://{self.host}:{self.plport}) status={status}>"
 
     def _gather_results(self):
         """Gathering subroutine, must be run in another thread to concurrently listen for results

@@ -11,7 +11,7 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 from multiprocessing import get_context
 from multiprocessing.queues import JoinableQueue
 
-from .worker import ProcessWorker
+from .worker import ProcessQueueWorker
 
 
 class JobQueue(JoinableQueue):
@@ -23,7 +23,7 @@ class JobQueue(JoinableQueue):
     """
 
     def __init__(self, completed_jobs, num_workers=8,
-                 start_method='fork', workers_class=ProcessWorker, debug=False):
+                 start_method='fork', worker_class=ProcessQueueWorker, debug=False):
         # Retrieve the spawn context for the joinable queue super class
         ctx = get_context(start_method)
         # Init super class
@@ -33,7 +33,7 @@ class JobQueue(JoinableQueue):
         # JoinableQueue to store completed jobs
         self._completed_jobs = completed_jobs
         # Worker class, can be either Process or Thread
-        self._workerclass = workers_class
+        self._workerclass = worker_class
         # Debug flag
         self._debug = debug
         # Spin the workers

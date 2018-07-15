@@ -19,6 +19,7 @@ import zmq
 from .actors import ResponseActor, WorkerActor
 from .connection import ConnectionFactory
 from ..jobqueue import JobQueue
+from ..worker import ProcessQueueWorker
 from ..actors.actorsystem import ActorSystem
 from ..actors.routers import RoundRobinRouter, SmallestMailboxRouter
 
@@ -181,7 +182,7 @@ class ActorMaster(Master):
                 self._responses.route(res)
 
 
-class ProcessMaster(Master):
+class QueueMaster(Master):
 
     """
     Master process, handle requests asynchronously from clients and delegate processing of
@@ -189,17 +190,20 @@ class ProcessMaster(Master):
     thread
     """
 
-    def __init__(self, host, pull_port, push_port,
-                 num_workers=max_workers(), sign_data=False, unix_socket=False, debug=False):
+    def __init__(self, host, pull_port, push_port, num_workers=max_workers(),
+                 worker_class=ProcessQueueWorker, sign_data=False, unix_socket=False, debug=False):
         super().__init__(host, pull_port, push_port, num_workers, sign_data, unix_socket, debug)
         # Result queue populated by workers
         self._completed_jobs = JoinableQueue()
+        # Workers class type
+        self._worker_class = worker_class
         # Job queue passed in to workers
-        self._jobqueue = JobQueue(self._completed_jobs, num_workers=num_workers, debug=debug)
+        self._jobqueue = JobQueue(self._completed_jobs, num_workers=num_workers,
+                                  worker_class=worker_class, debug=debug)
         # Dedicated thread to client responses
         self._response_thread = Thread(target=self._respond, daemon=True)
         self._response_thread.start()
-        self._log.info("Worker type: Process")
+        self._log.info("Worker type: %s", worker_class.__name__)
 
     def _respond(self):
         """Spin a loop and respond to client with whatever results arrive in the completed_jobs
@@ -213,10 +217,11 @@ class ProcessMaster(Master):
 
     async def _start(self):
         """Receive jobs from clients with polling"""
+        unpickle = False
         while True:
             events = await self._poller.poll()
             if self._server._pull_socket in dict(events):
-                pickled_job = await self._server.recv(unpickle=False)
+                pickled_job = await self._server.recv(unpickle=unpickle)
                 self._jobqueue.add_job(pickled_job)
 
     def _stop(self):
