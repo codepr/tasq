@@ -253,8 +253,8 @@ class UnixConnection(Connection):
 
 class RedisConnection:
 
-    def __init__(self, host, port, db, name, secure=False):
-        self._rb = RedisBrokerSocket(host, port, db, name)
+    def __init__(self, host, port, db, name, namespace='queue', secure=False):
+        self._rb = RedisBrokerSocket(host, port, db, name, namespace)
         self._secure = secure
 
     def send(self, data):
@@ -265,12 +265,12 @@ class RedisConnection:
         else:
             self._rb.send_signed(data)
 
-    def recv(self, key, unpickle=True):
+    def recv(self, timeout=None, unpickle=True):
         """Receive data from the PULL socket, if a secure flag is set it checks
         for integrity of the received data"""
         if self._secure is False:
-            return self._rb.recv_data(key, unpickle)
-        return self._rb.recv_signed(key, unpickle)
+            return self._rb.recv_data(timeout, unpickle)
+        return self._rb.recv_signed(timeout, unpickle)
 
 
 class ConnectionFactory:
@@ -303,5 +303,5 @@ class ConnectionFactory:
         return UnixConnection(host, push_port, pull_port, secure)
 
     @staticmethod
-    def make_redis_connection(host, port, db, name):
-        return RedisConnection(host, port, db, name)
+    def make_redis_connection(host, port, db, name, namespace='queue', secure=False):
+        return RedisConnection(host, port, db, name, namespace, secure=secure)

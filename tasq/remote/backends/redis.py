@@ -28,7 +28,7 @@ class RedisBroker:
             except ConnectionError as e:
                 self.log.warning('Connection to DB failed with error %s.', e)
 
-            self._key = '%s:%s' % (namespace, name)
+            self._key = f'{namespace}:{name}'
 
         def qsize(self):
             """Return the approximate size of the queue."""
@@ -61,16 +61,15 @@ class RedisBroker:
             return self.get(False)
 
 
-    def __init__(self, host, port, db, name):
+    def __init__(self, host, port, db, name, namespace='queue'):
 
-        self._rq = self.RedisQueue(name, host, port, db)
+        self._rq = self.RedisQueue(name, host, port, db, namespace)
 
     def put_job(self, serialized_job):
         self._rq.put(serialized_job)
 
     def get_next_job(self, timeout=None):
-        block = False if not timeout else True
-        return self._rq.get(block, timeout)
+        return self._rq.get(True, timeout)
 
 
 class RedisBackend:
