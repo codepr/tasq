@@ -1,23 +1,18 @@
-# -*- coding: utf-8 -*-
-
 """
 tasq.actors.actor.py
 ~~~~~~~~~~~~~~~~~~~~
-Contains definitions of generic Actor class, must be subclassed to effectively instance useful
-actors.
+Contains definitions of generic Actor class, must be subclassed to effectively
+instance useful actors.
 """
 
 from __future__ import absolute_import, division, print_function, unicode_literals
 
 import uuid
-import logging
 from queue import Queue
 from threading import Thread, Event
 
+from ..logger import get_logger
 from .actorsystem import ActorSystem
-
-
-_fmt = logging.Formatter('%(message)s', '%Y-%m-%d %H:%M:%S')
 
 
 class ActorExit(Exception):
@@ -26,31 +21,21 @@ class ActorExit(Exception):
 
 class Actor:
 
-    """Class modeling a basic erlang-style actor, a simple object which can be used to push messages
-    into a mailbox and process them in separate thread, concurrently, without sharing any state with
-    other actors"""
+    """Class modeling a basic erlang-style actor, a simple object which can be
+    used to push messages into a mailbox and process them in separate thread,
+    concurrently, without sharing any state with other actors"""
 
-    def __init__(self, name=u'', ctx=None, debug=False):
+    def __init__(self, name=u'', ctx=None):
         # Assingn a default uuid name in case of no name set
         self._name = name or uuid.uuid4()
-        self._debug = debug
         self._is_running = False
         self._mailbox = Queue()
         self._terminated = Event()
-        # XXX it is really a joke at the moment but still, context == actorsystem singleton
+        # XXX it is really a joke at the moment but still,
+        # context == actorsystem singleton
         self._ctx = ctx or ActorSystem()
         # Logging settings
-        self._log = logging.getLogger(f"{__name__}.{self._name}")
-        sh = logging.StreamHandler()
-        sh.setFormatter(_fmt)
-        if self._debug is True:
-            sh.setLevel(logging.DEBUG)
-            self._log.setLevel(logging.DEBUG)
-            self._log.addHandler(sh)
-        else:
-            sh.setLevel(logging.INFO)
-            self._log.setLevel(logging.INFO)
-            self._log.addHandler(sh)
+        self._log = get_logger(f'{__name__}.{self._name}')
 
     @property
     def name(self):
@@ -65,12 +50,14 @@ class Actor:
         return self._mailbox.qsize()
 
     def send(self, msg):
-        """Sends a message to the actor, effectively putting it into the mailbox"""
+        """Sends a message to the actor, effectively putting it into the
+        mailbox"""
         self._mailbox.put(msg)
 
     def recv(self):
-        """Poll the mailbox for pending messages, blocking if empty. In case of `ActorExit` message
-        it raises an execption and shutdown the actor loop"""
+        """Poll the mailbox for pending messages, blocking if empty. In case of
+        `ActorExit` message it raises an execption and shutdown the actor
+        loop"""
         msg = self._mailbox.get()
         if msg is ActorExit:
             self._is_running = False
@@ -89,8 +76,8 @@ class Actor:
         self._log.debug("%s started", self.name)
 
     def _bootstrap(self):
-        """Target method to be run into a thread, call the `run` method till an `ActorExit`
-        message"""
+        """Target method to be run into a thread, call the `run` method till an
+        `ActorExit` message"""
         try:
             self.run()
         except ActorExit:
@@ -109,7 +96,8 @@ class Actor:
 
 class Result:
 
-    """Simple class to wrap a result for processed jobs, acts much like a future object"""
+    """Simple class to wrap a result for processed jobs, acts much like a
+    future object"""
 
     def __init__(self):
         self._event = Event()

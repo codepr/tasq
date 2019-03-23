@@ -1,10 +1,8 @@
-# -*- coding: utf-8 -*-
-
 """
 tasq.actors.actorsystem.py
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
-Contains definitions of a trivial Actor System class, useful to manage actor creation and usable as
-context creator for child actors.
+Contains definitions of a trivial Actor System class, useful to manage actor
+creation and usable as context creator for child actors.
 """
 
 from __future__ import absolute_import, division, print_function, unicode_literals
@@ -19,10 +17,9 @@ class ActorSystem(metaclass=SingletonArgs):
 
     """Currently designed as a Singleton"""
 
-    def __init__(self, name=u'', debug=False):
+    def __init__(self, name=u''):
         self._name = name or uuid.uuid4()
         self._actors = {}  # Mapping actor_name -> actor_ref
-        self._debug = debug
 
     @property
     def name(self):
@@ -38,11 +35,12 @@ class ActorSystem(metaclass=SingletonArgs):
         self._actors[actor.name] = actor
         return actor
 
-    def router_of(self, router_class, actor_class, num_workers, func_name='submit', *args, **kwargs):
-        """Return a router class type with the number and type of workers specified"""
-        pool = actor_pool(
-            num_workers, actor_class, router_class, func_name, self._debug, *args, **kwargs
-        )
+    def router_of(self, router_class, actor_class, num_workers,
+                  func_name='submit', *args, **kwargs):
+        """Return a router class type with the number and type of workers
+        specified"""
+        pool = actor_pool(num_workers, actor_class, router_class,
+                          func_name, *args, **kwargs)
         self._actors.update({w.name: w for w in pool.workers})
         return pool
 

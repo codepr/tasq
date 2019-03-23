@@ -1,5 +1,5 @@
-# -*- coding: utf-8 -*-
-
+"""
+"""
 from __future__ import absolute_import, division, print_function, unicode_literals
 
 import json
@@ -8,7 +8,8 @@ import inspect
 
 class Singleton(type):
 
-    """Singleton class, just subclass this to obtain a singleton instance of an object"""
+    """Singleton class, just subclass this to obtain a singleton instance of an
+    object"""
 
     def __init__(cls, *args, **kwargs):
         cls._instance = None
@@ -45,9 +46,8 @@ class SingletonArgs(type):
 
 class Configuration(dict, metaclass=Singleton):
 
-    """Configuration singleton base class. Should be subclassed to implement different
-    configurations by giving a filepath to read from.
-
+    """Configuration singleton base class. Should be subclassed to implement
+    different configurations by giving a filepath to read from.
     """
 
     __initialized__ = False

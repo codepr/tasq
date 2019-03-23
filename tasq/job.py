@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 """
 tasq.job.py
 ~~~~~~~~~~~
@@ -22,7 +20,8 @@ class JobStatus(IntEnum):
 
 class Job:
 
-    """Simple class modeling a Job, wrapping function calls with arguments and giving it an ID"""
+    """Simple class modeling a Job, wrapping function calls with arguments and
+    giving it an ID"""
 
     def __init__(self, job_id, func, *args, **kwargs):
         # Assign a default uuid in case of empty name
@@ -79,7 +78,8 @@ class Job:
         return False
 
     def execution_time(self):
-        """Return the time passed between the start of the execution and the end of it"""
+        """Return the time passed between the start of the execution and the
+        end of it"""
         try:
             return self._end_time - self._start_time
         except TypeError:
@@ -90,8 +90,9 @@ class Job:
         self._delay = delay
 
     def execute(self):
-        """Execute the function with arguments and keyword arguments, if a given delay is specified,
-        this method await till the timeout expires and then executes the job"""
+        """Execute the function with arguments and keyword arguments, if a
+        given delay is specified, this method await till the timeout expires
+        and then executes the job"""
         if self._delay:
             time.sleep(self._delay)
             return self._execute_job()

@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 """
 tasq.settings.py
 ~~~~~~~~~~~~~~~~
@@ -19,7 +17,7 @@ class TasqConfig(Configuration):
         'sign_data': False,
         'sharedkey': 'put-here-a-shared-key',
         'unix_socket': False,
-        'debug': True
+        'verbose': False
     }
 
 

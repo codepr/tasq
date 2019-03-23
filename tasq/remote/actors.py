@@ -1,10 +1,8 @@
-# -*- coding: utf-8 -*-
-
 """
 tasq.remote.actors.py
 ~~~~~~~~~~~~~~~~~~~~~
-This module contains all actors and routers as well used as workers for all tasks incoming from
-remote calls.
+This module contains all actors and routers as well used as workers for all
+tasks incoming from remote calls.
 """
 
 from __future__ import absolute_import, division, print_function, unicode_literals
@@ -15,27 +13,28 @@ from ..actors.actor import Actor, Result
 
 class WorkerActor(Actor):
 
-    """Simple worker actor, execute a `job` and set a result with the response"""
+    """Simple worker actor, execute a `job` and set a result with the
+    response"""
 
-    def __init__(self, name=u'', ctx=None, response_actor=None, debug=False):
+    def __init__(self, name=u'', ctx=None, response_actor=None):
         self._response_actor = response_actor or ctx.actor_of(
             ResponseActor, f'ResponseActor - {name}'
         )
-        super().__init__(name, ctx, debug)
+        super().__init__(name, ctx)
 
     def submit(self, job):
-        """Submits a job object to the run loop of the actor, returning immediatly a `Result` object
-        without having to wait for it to be filled with the effective processing result of the
-        job
+        """Submits a job object to the run loop of the actor, returning
+        immediatly a `Result` object without having to wait for it to be filled
+        with the effective processing result of the job
 
         Args:
         -----
         :type job: tasq.Job
-        :param job: The `tasq.Job` object containing the function to be executed in the current
-                    actor
+        :param job: The `tasq.Job` object containing the function to be
+                    executed in the current actor
 
-        :return: A `tasq.Result` object, future-like object that will contain the result of the job
-                 execution
+        :return: A `tasq.Result` object, future-like object that will contain
+                 the result of the job execution
         """
         self._log.debug(
             "Sending message to actor %s - pending jobs %s",
@@ -47,8 +46,8 @@ class WorkerActor(Actor):
         return r
 
     def run(self):
-        """Executes pending jobs, setting the results to the associated `Result` object once it is
-        ready"""
+        """Executes pending jobs, setting the results to the associated
+        `Result` object once it is ready"""
         while True:
             job, result = self.recv()
             self._log.debug("Received %s", job)
@@ -58,8 +57,7 @@ class WorkerActor(Actor):
                 timed_actor = self._ctx.actor_of(
                     TimedActor,
                     'TimedActor - ' + job.job_id,
-                    response_actor=self._response_actor,
-                    debug=self._debug
+                    response_actor=self._response_actor
                 )
                 timed_actor.start()
                 timed_actor.submit(job, eta)
@@ -76,18 +74,19 @@ class WorkerActor(Actor):
                     jobres = response.exc
                 else:
                     jobres = response.value
-                self._log.debug('%s - Job %s result = %s', self.name, job.job_id, jobres)
+                self._log.debug('%s - Job %s result = %s',
+                                self.name, job.job_id, jobres)
                 result.set_result(response)
 
 
 class ResponseActor(Actor):
 
-    """Response actor, it's task is to answer back to the client by leveragin the PUSH/PULL
-    communication pattern offered by ZMQ sockets"""
+    """Response actor, it's task is to answer back to the client by leveraging
+    the PUSH/PULL communication pattern offered by ZMQ sockets"""
 
-    def __init__(self, name=u'', ctx=None, debug=False, *, sendfunc=None):
+    def __init__(self, name=u'', ctx=None, *, sendfunc=None):
         self._sendfunc = sendfunc
-        super().__init__(name, ctx, debug)
+        super().__init__(name, ctx)
 
     def run(self):
         """Send response back to connected clients by using ZMQ PUSH channel"""
@@ -100,17 +99,21 @@ class TimedActor(Actor):
 
     """Actor designed to run only a single task every defined datetime"""
 
-    def __init__(self, name=u'', ctx=None, response_actor=None, debug=False):
+    def __init__(self, name=u'', ctx=None, response_actor=None):
         self._response_actor = response_actor or self._ctx.actor_of(
-            ResponseActor, 'TimedActor - ResponseActor', debug
+            ResponseActor, 'TimedActor - ResponseActor'
         )
         self._response_actor.start()
-        super().__init__(name, ctx, debug)
+        super().__init__(name, ctx)
 
     def submit(self, job, eta):
-        """Submit a time-scheduled job, to be executed every defined interval. Eta define the
-        interval of the repeating task, and can be specified as an int, meaning seconds, or as
-        string specifying the measure unit. E.g.
+        """
+        Submit a time-scheduled job, to be executed every defined interval.
+        Eta define the interval of the repeating task, and can be specified as
+        an int, meaning seconds, or as string specifying the measure unit.
+
+        E.g.
+
         4s -> Job executed every 4 seconds
         6m -> Job executed every 6 minutes
         8h -> Job executed every 8 hours
@@ -118,14 +121,14 @@ class TimedActor(Actor):
         Args:
         -----
         :type job: tasq.Job
-        :param job: The `tasq.Job` object containing the function to be executed in the current
-                    actor
+        :param job: The `tasq.Job` object containing the function to be
+                    executed in the current actor
 
         :type eta: str
         :param eta: The time that pass in every tic of the repeating interval
 
-        :return: A `tasq.Result` object, future-like object that will contain the result of the job
-                 execution
+        :return: A `tasq.Result` object, future-like object that will contain
+                 the result of the job execution
         """
         result = Result()
         multiples = {'h': 60 * 60, 'm': 60, 's': 1}
@@ -145,8 +148,8 @@ class TimedActor(Actor):
         self.send((job, result))
 
     def run(self):
-        """Executes pending jobs, setting the results to the associated `Result` object once it is
-        ready"""
+        """Executes pending jobs, setting the results to the associated
+        `Result` object once it is ready"""
         while True:
             job, result = self.recv()
             self._log.debug("%s - executing timed job %s", self.name, job)
@@ -161,7 +164,8 @@ class TimedActor(Actor):
                 jobres = response.exc
             else:
                 jobres = response.value
-            self._log.debug('%s - Timed job %s result = %s', self.name, job.job_id, jobres)
+            self._log.debug('%s - Timed job %s result = %s',
+                            self.name, job.job_id, jobres)
             result.set_result(response)
             self._response_actor.send(result)
             self.submit(job, str(job.delay) + 's')
@@ -169,39 +173,42 @@ class TimedActor(Actor):
 
 class ClientWorker(Actor):
 
-    """Simplicistic worker with responsibility to communicate job scheduling to a `TasqClient`
-    instance"""
+    """Simplicistic worker with responsibility to communicate job scheduling to
+    a `TasqClient` instance"""
 
-    def __init__(self, client, name=u'', ctx=None, debug=False):
+    def __init__(self, client, name=u'', ctx=None):
         self._client = client
-        super().__init__(name=name, ctx=ctx, debug=debug)
+        super().__init__(name=name, ctx=ctx)
 
     def submit(self, job):
-        """Create a `Future` object and enqueue it into the mailbox with the associated job, then
-        return it to the caller
+        """
+        Create a `Future` object and enqueue it into the mailbox with the
+        associated job, then return it to the caller
 
         Args:
         -----
         :type job: tasq.Job
-        :param job: The `tasq.Job` object containing the function to be executed in the current
-                    actor
+        :param job: The `tasq.Job` object containing the function to be
+                    executed in the current actor
 
-        :return: A `tasq.Result` object, future-like object that will contain the result of the job
-                 execution
+        :return: A `tasq.Result` object, future-like object that will contain
+                 the result of the job execution
         """
         future = Future()
         self.send((job, future))
         return future
 
     def run(self):
-        """Consumes all messages in the mailbox, setting each future's result with the result
-        returned by the call."""
+        """Consumes all messages in the mailbox, setting each future's result
+        with the result returned by the call."""
         while True:
             job, future = self.recv()
             self._log.debug("Received %s", job)
             self._log.debug("%s - executing job %s", self.name, job.job_id)
             if not self._client.is_connected:
                 self._client.connect()
-            fut = self._client.schedule(job.func, *job.args, name=job.job_id, **job.kwargs)
-            # XXX A bit sloppy, but probably better schedule the fut result settings in a callback
+            fut = self._client.schedule(job.func, *job.args,
+                                        name=job.job_id, **job.kwargs)
+            # XXX A bit sloppy, but probably better schedule the fut result
+            # settings in a callback
             future.set_result(fut.result())

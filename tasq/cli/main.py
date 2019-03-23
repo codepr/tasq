@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 """
 tasq.cli.main.py
 ~~~~~~~~~~~~~~~~
@@ -29,33 +27,33 @@ def get_parser():
     parser.add_argument('--worker-type', action='store')
     parser.add_argument('--num-workers', action='store')
     parser.add_argument('--random', action='store')
-    parser.add_argument('--debug', action='store_true')
+    parser.add_argument('--verbose', '-v', action='store_true')
     parser.add_argument('--addr', '-a', action='store')
     parser.add_argument('--port', '-p', action='store')
     return parser
 
 
-def start_worker(host, port, debug, sign_data, unix_socket, worker_type):
+def start_worker(host, port, sign_data, unix_socket, worker_type):
     from tasq.remote.master import ActorMaster, QueueMaster
     if worker_type == WorkerType.ActorWorker:
-        master = ActorMaster(host, port, port + 1, debug=debug,
+        master = ActorMaster(host, port, port + 1,
                              sign_data=sign_data, unix_socket=unix_socket)
     elif worker_type == WorkerType.ThreadWorker:
-        master = QueueMaster(host, port, port + 1, debug=debug, worker_class=ThreadQueueWorker,
+        master = QueueMaster(host, port, port + 1, worker_class=ThreadQueueWorker,
                              sign_data=sign_data, unix_socket=unix_socket)
     else:
-        master = QueueMaster(host, port, port + 1, debug=debug,
+        master = QueueMaster(host, port, port + 1,
                              sign_data=sign_data, unix_socket=unix_socket)
     master.serve_forever()
 
 
-def start_workers(workers, debug, sign_data, unix_socket):
+def start_workers(workers, sign_data, unix_socket):
     from tasq.remote.master import Masters
-    masters = Masters(workers, sign_data=sign_data, unix_socket=unix_socket, debug=debug)
+    masters = Masters(workers, sign_data=sign_data, unix_socket=unix_socket)
     masters.start_procs()
 
 
-def start_random_workers(host, num_workers, debug, sign_data, unix_socket):
+def start_random_workers(host, num_workers, sign_data, unix_socket):
     import random
     from tasq.remote.master import Masters
     workers_set = set()
@@ -68,7 +66,7 @@ def start_random_workers(host, num_workers, debug, sign_data, unix_socket):
         if len(workers_set) == num_workers:
             break
         init_port = port + 2
-    masters = Masters(list(workers_set), sign_data=sign_data, unix_socket=unix_socket, debug=debug)
+    masters = Masters(list(workers_set), sign_data=sign_data, unix_socket=unix_socket)
     masters.start_procs()
 
 
@@ -83,13 +81,13 @@ def main():
     if args.f:
         conf = get_config(path=args.f)
     host, port = conf['host'], conf['port']
-    debug = conf['debug']
+    verbose = conf['verbose']
     sign_data = conf['sign_data']
     unix_socket = conf['unix_socket']
     num_workers = 4
     worker_type = WorkerType.ActorWorker
-    if args.debug:
-        debug = True
+    if args.verbose:
+        verbose = True
     if args.secure:
         sign_data = True
     if args.unix:
@@ -100,8 +98,8 @@ def main():
         try:
             worker_type = WorkerType(args.worker_type)
         except ValueError:
-            print(f"{args.worker_type} is not a valid type: use either process or actor.  Fallbacking"
-                  " to actor")
+            print(f"{args.worker_type} is not a valid type: use either process "
+                  "or actor.  Fallbacking to actor")
     if args.workers:
         try:
             pairs = conf['workers']
@@ -113,12 +111,12 @@ def main():
                 workers = _translate_peers(pairs)
         else:
             workers = _translate_peers(args.workers or conf['workers'])
-        start_workers(workers, debug, sign_data, unix_socket)
+        start_workers(workers, sign_data, unix_socket)
     if args.subcommand == 'worker':
         if args.addr:
             host = args.addr
         if args.port:
             port = int(args.port)
-        start_worker(host, port, debug, sign_data, unix_socket, worker_type)
+        start_worker(host, port, sign_data, unix_socket, worker_type)
     elif args.random:
-        start_random_workers(host, int(args.random), debug, sign_data, unix_socket)
+        start_random_workers(host, int(args.random), sign_data, unix_socket)

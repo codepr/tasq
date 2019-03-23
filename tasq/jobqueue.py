@@ -1,13 +1,13 @@
-# -*- coding: utf-8 -*-
-
 """
 tasq.jobqueue.py
 ~~~~~~~~~~~~~~~~
-Contains naive implementation of a joinable queue for execution of tasks in a single node context.
+Contains naive implementation of a joinable queue for execution of tasks in a
+single node context.
 """
 
 from __future__ import absolute_import, division, print_function, unicode_literals
 
+from queue import Queue
 from multiprocessing import get_context
 from multiprocessing.queues import JoinableQueue
 
@@ -17,13 +17,16 @@ from .worker import ProcessQueueWorker
 class JobQueue(JoinableQueue):
 
     """
-    JoinableQueue subclass which spin a pool of workers to execute job in background, workers can
-    be either threads or processes. The distinction can be assumed based on the nature of the tasks,
-    being them more of I/O bound tasks or CPU bound tasks.
+    JoinableQueue subclass which spin a pool of workers to execute job in
+    background, workers can be either threads or processes. The distinction can
+    be assumed based on the nature of the tasks, being them more of I/O bound
+    tasks or CPU bound tasks.
     """
 
     def __init__(self, completed_jobs, num_workers=8,
-                 start_method='fork', worker_class=ProcessQueueWorker, debug=False):
+                 start_method='fork', worker_class=ProcessQueueWorker):
+        # if not isinstance(worker_class, Worker):
+        #     raise Exception
         # Retrieve the spawn context for the joinable queue super class
         ctx = get_context(start_method)
         # Init super class
@@ -34,8 +37,6 @@ class JobQueue(JoinableQueue):
         self._completed_jobs = completed_jobs
         # Worker class, can be either Process or Thread
         self._workerclass = worker_class
-        # Debug flag
-        self._debug = debug
         # Spin the workers
         self.start_workers()
 
@@ -67,5 +68,5 @@ class JobQueue(JoinableQueue):
     def start_workers(self):
         """Create and start all the workers"""
         for _ in range(self.num_workers):
-            w = self._workerclass(self, self.completed_jobs, debug=self._debug)
+            w = self._workerclass(self, self.completed_jobs)
             w.start()

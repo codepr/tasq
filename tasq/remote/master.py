@@ -1,16 +1,14 @@
-# -*- coding: utf-8 -*-
-
 """
 tasq.remote.master.py
 ~~~~~~~~~~~~~~~~~~~~~
-Master process, listening for incoming connections to schedule tasks to a pool of worker actors
+Master process, listening for incoming connections to schedule tasks to a pool
+of worker actors
 """
 
 from __future__ import absolute_import, division, print_function, unicode_literals
 
 import signal
 import asyncio
-import logging
 from threading import Thread
 from abc import ABCMeta, abstractmethod
 from multiprocessing import Process, JoinableQueue, cpu_count
@@ -18,13 +16,11 @@ import zmq
 
 from .actors import ResponseActor, WorkerActor
 from .connection import ConnectionFactory
+from ..logger import get_logger
 from ..jobqueue import JobQueue
 from ..worker import ProcessQueueWorker
 from ..actors.actorsystem import ActorSystem
 from ..actors.routers import RoundRobinRouter, SmallestMailboxRouter
-
-
-_fmt = logging.Formatter('%(message)s', '%Y-%m-%d %H:%M:%S')
 
 
 def max_workers():
@@ -34,13 +30,13 @@ def max_workers():
 class Master(metaclass=ABCMeta):
 
     """
-    Master process, handle requests asynchronously from clients and delegate processing of
-    incoming tasks to worker actors, responses are sent back to clients by using a pool of actors as
-    well
+    Master process, handle requests asynchronously from clients and
+    delegate processing of incoming tasks to worker actors, responses are sent
+    back to clients by using a pool of actors as well
     """
 
     def __init__(self, host, pull_port, push_port,
-                 num_workers=max_workers(), sign_data=False, unix_socket=False, debug=False):
+                 num_workers=max_workers(), sign_data=False, unix_socket=False):
         # Host address to bind sockets to
         self._host = host
         # Port for push side (outgoing) of the communication channel
@@ -51,26 +47,15 @@ class Master(metaclass=ABCMeta):
         self._num_workers = num_workers
         # Send digital signed data
         self._sign_data = sign_data
-        # Unix socket flag, if set to true, unix sockets for interprocess communication will be used
-        # and ports will be used to differentiate push and pull channel
+        # Unix socket flag, if set to true, unix sockets for interprocess
+        # communication will be used and ports will be used to differentiate
+        # push and pull channel
         self._unix_socket = unix_socket
         # Server reference to set up the communication
         self._server = None
         self._init_server()
-        # Debug flag
-        self._debug = debug
         # Logging settings
-        self._log = logging.getLogger(f'{__name__}.{self._host}.{self._push_port}')
-        sh = logging.StreamHandler()
-        sh.setFormatter(_fmt)
-        if self._debug is True:
-            sh.setLevel(logging.DEBUG)
-            self._log.setLevel(logging.DEBUG)
-            self._log.addHandler(sh)
-        else:
-            sh.setLevel(logging.INFO)
-            self._log.setLevel(logging.INFO)
-            self._log.addHandler(sh)
+        self._log = get_logger(f'{__name__}.{self._host}.{self._push_port}')
         # ZMQ poller settings for async recv
         self._poller = zmq.asyncio.Poller()
         self._poller.register(self._server.pull_socket, zmq.POLLIN)
@@ -106,11 +91,12 @@ class Master(metaclass=ABCMeta):
     def _init_server(self):
         """Init the server placeholder"""
         self._server = ConnectionFactory \
-            .make_server(self.host, self.push_port, self.pull_port, self.sign_data, self.unix_socket)
+            .make_server(self.host, self.push_port, self.pull_port,
+                         self.sign_data, self.unix_socket)
 
     def _bind_sockets(self):
-        """Binds PUSH and PULL channel sockets to the respective address:port pairs defined in the
-        constructor"""
+        """Binds PUSH and PULL channel sockets to the respective address:port
+        pairs defined in the constructor"""
         self._server.bind()
         self._log.info("Listening for jobs on %s:%s", self._host, self._pull_port)
 
@@ -130,8 +116,8 @@ class Master(metaclass=ABCMeta):
         self._server.stop()
 
     def serve_forever(self):
-        """Blocking function, schedule the execution of the coroutine waiting for incoming tasks and
-        run the asyncio loop forever"""
+        """Blocking function, schedule the execution of the coroutine waiting
+        for incoming tasks and run the asyncio loop forever"""
         self._bind_sockets()
         asyncio.ensure_future(self._start())
         self._loop.run_forever()
@@ -140,20 +126,19 @@ class Master(metaclass=ABCMeta):
 class ActorMaster(Master):
 
     """
-    Master process, handle requests asynchronously from clients and delegate processing of
-    incoming tasks to worker actors, responses are sent back to clients by using a pool of actors as
-    well
+    Master process, handle requests asynchronously from clients and
+    delegate processing of incoming tasks to worker actors, responses are sent
+    back to clients by using a pool of actors as well
     """
 
     def __init__(self, host, pull_port, push_port, num_workers=max_workers(),
-                 router_class=RoundRobinRouter, sign_data=False, unix_socket=False, debug=False):
-        super().__init__(host, pull_port, push_port, num_workers, sign_data, unix_socket, debug)
+                 router_class=RoundRobinRouter, sign_data=False, unix_socket=False):
+        super().__init__(host, pull_port, push_port, num_workers, sign_data, unix_socket)
         # Routing type
         self._router_class = router_class
         # Worker's ActorSystem
         self._system = ActorSystem(
-            f'{self._host}:({self._push_port}, {self._pull_port})',
-            self._debug
+            f'{self._host}:({self._push_port}, {self._pull_port})'
         )
         # Actor router for responses
         self._responses = self._system.router_of(
@@ -185,29 +170,29 @@ class ActorMaster(Master):
 class QueueMaster(Master):
 
     """
-    Master process, handle requests asynchronously from clients and delegate processing of
-    incoming tasks to worker processes, responses are sent back to clients by using a dedicated
-    thread
+    Master process, handle requests asynchronously from clients and
+    delegate processing of incoming tasks to worker processes, responses are
+    sent back to clients by using a dedicated thread
     """
 
     def __init__(self, host, pull_port, push_port, num_workers=max_workers(),
-                 worker_class=ProcessQueueWorker, sign_data=False, unix_socket=False, debug=False):
-        super().__init__(host, pull_port, push_port, num_workers, sign_data, unix_socket, debug)
+                 worker_class=ProcessQueueWorker, sign_data=False, unix_socket=False):
+        super().__init__(host, pull_port, push_port, num_workers, sign_data, unix_socket)
         # Result queue populated by workers
         self._completed_jobs = JoinableQueue()
         # Workers class type
         self._worker_class = worker_class
         # Job queue passed in to workers
         self._jobqueue = JobQueue(self._completed_jobs, num_workers=num_workers,
-                                  worker_class=worker_class, debug=debug)
+                                  worker_class=worker_class)
         # Dedicated thread to client responses
         self._response_thread = Thread(target=self._respond, daemon=True)
         self._response_thread.start()
         self._log.info("Worker type: %s", worker_class.__name__)
 
     def _respond(self):
-        """Spin a loop and respond to client with whatever results arrive in the completed_jobs
-        queue"""
+        """Spin a loop and respond to client with whatever results arrive in
+        the completed_jobs queue"""
         while True:
             response = self._completed_jobs.get()
             # Poison pill check
@@ -232,11 +217,10 @@ class QueueMaster(Master):
         self._response_thread.join()
 
     def serve_forever(self):
-        """Blocking function, schedule the execution of the coroutine waiting for incoming tasks and
-        run the asyncio loop forever"""
+        """Blocking function, schedule the execution of the coroutine waiting
+        for incoming tasks and run the asyncio loop forever"""
         self._bind_sockets()
         asyncio.ensure_future(self._start())
-        # asyncio.ensure_future(self._respond())
         self._loop.run_forever()
 
 
@@ -249,8 +233,9 @@ class Masters:
         self._binds = binds
         # Digital sign data before send an receive it
         self._sign_data = sign_data
-        # Unix socket flag, if set to true, unix sockets for interprocess communication will be used
-        # and ports will be used to differentiate push and pull channel
+        # Unix socket flag, if set to true, unix sockets for interprocess
+        # communication will be used and ports will be used to differentiate
+        # push and pull channel
         self._unix_socket = unix_socket
         # Debug flag
         self._debug = debug
@@ -259,8 +244,8 @@ class Masters:
         self._init_binds()
 
     def _serve_master(self, host, psh_port, pl_port):
-        m = ActorMaster(host, psh_port, pl_port, sign_data=self._sign_data,
-                        unix_socket=self._unix_socket, debug=self._debug)
+        m = ActorMaster(host, psh_port, pl_port,
+                        sign_data=self._sign_data, unix_socket=self._unix_socket)
         m.serve_forever()
 
     def _init_binds(self):

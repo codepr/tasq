@@ -1,14 +1,12 @@
-# -*- coding: utf-8 -*-
-
 """
 tasq.remote.client.py
 ~~~~~~~~~~~~~~~~~~~~~
-Client part of the application, responsible for scheduling jobs to local or remote workers.
+Client part of the application, responsible for scheduling jobs to local or
+remote workers.
 """
 
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import logging
 from concurrent.futures import Future
 from threading import Thread
 from collections import deque
@@ -16,13 +14,11 @@ from collections import deque
 import zmq
 
 from ..job import Job
+from ..logger import get_logger
 from ..actors.routers import RoundRobinRouter
 from ..actors.actorsystem import ActorSystem
 from .actors import ClientWorker
 from .connection import ConnectionFactory
-
-
-_fmt = logging.Formatter('%(message)s', '%Y-%m-%d %H:%M:%S')
 
 
 class TasqClientNotConnected(Exception):
@@ -34,11 +30,13 @@ class TasqClientNotConnected(Exception):
 
 class TasqClient:
 
-    """Simple client class to schedule jobs to remote workers, currently supports a synchronous way
-    of calling tasks awaiting for results and an asynchronous one which collect results in a
-    dedicated dictionary"""
+    """
+    Simple client class to schedule jobs to remote workers, currently
+    supports a synchronous way of calling tasks awaiting for results and an
+    asynchronous one which collect results in a dedicated dictionary
+    """
 
-    def __init__(self, host, port, plport=None, sign_data=False, unix_socket=False, debug=False):
+    def __init__(self, host, port, plport=None, sign_data=False, unix_socket=False):
         # Host address of a remote master to connect to
         self._host = host
         # Port for push side (outgoing) of the communication channel
@@ -47,8 +45,9 @@ class TasqClient:
         self._plport = plport or port + 1
         # Send digital signed data
         self._sign_data = sign_data
-        # Unix socket flag, if set to true, unix sockets for interprocess communication will be used
-        # and ports will be used to differentiate push and pull channel
+        # Unix socket flag, if set to true, unix sockets for interprocess
+        # communication will be used and ports will be used to differentiate
+        # push and pull channel
         self._unix_socket = unix_socket
         # Client reference, set up the communication with a Master
         self._client = ConnectionFactory \
@@ -61,20 +60,8 @@ class TasqClient:
         self._pending = deque()
         # Gathering results, making the client unblocking
         self._gatherer = Thread(target=self._gather_results, daemon=True)
-        # Debug flag
-        self._debug = debug
         # Logging settings
-        self._log = logging.getLogger(f'{__name__}.{self._host}.{self._port}')
-        sh = logging.StreamHandler()
-        sh.setFormatter(_fmt)
-        if self._debug is True:
-            sh.setLevel(logging.DEBUG)
-            self._log.setLevel(logging.DEBUG)
-            self._log.addHandler(sh)
-        else:
-            sh.setLevel(logging.INFO)
-            self._log.setLevel(logging.INFO)
-            self._log.addHandler(sh)
+        self._log = get_logger(f'{__name__}.{self._host}.{self._port}')
 
     @property
     def host(self):
@@ -121,8 +108,8 @@ class TasqClient:
                f"{socket_type}://{self.host}:{self.plport}) status={status}>"
 
     def _gather_results(self):
-        """Gathering subroutine, must be run in another thread to concurrently listen for results
-        and store them into a dedicated dictionary"""
+        """Gathering subroutine, must be run in another thread to concurrently
+        listen for results and store them into a dedicated dictionary"""
         while True:
             try:
                 job_result = self._client.recv()
@@ -134,8 +121,8 @@ class TasqClient:
                 self._results[job_result.name].set_result(job_result.value)
 
     def connect(self):
-        """Connect to the remote workers, setting up PUSH and PULL channels, respectively used to
-        send tasks and to retrieve results back"""
+        """Connect to the remote workers, setting up PUSH and PULL channels,
+        respectively used to send tasks and to retrieve results back"""
         if not self.is_connected:
             self._client.connect()
             self._is_connected = True
@@ -163,9 +150,11 @@ class TasqClient:
         return {k: v for k, v in self._results.items() if v.done() is False}
 
     def schedule(self, runnable, *args, **kwargs):
-        """Schedule a job to a remote worker, without blocking. Require a runnable task, and
-        arguments to be passed with, cloudpickle will handle dependencies shipping. Optional it is
-        possible to give a name to the job, otherwise a UUID will be defined
+        """
+        Schedule a job to a remote worker, without blocking. Require a
+        runnable task, and arguments to be passed with, cloudpickle will handle
+        dependencies shipping. Optional it is possible to give a name to the
+        job, otherwise a UUID will be defined
 
         Args:
         -----
@@ -181,7 +170,8 @@ class TasqClient:
             self._log.debug("Client not connected, appending job to pending queue.")
             self._pending.appendleft(job)
         else:
-            # Create a Future and return it, _gatherer thread will set the result once received
+            # Create a Future and return it, _gatherer thread will set the
+            # result once received
             future = Future()
             self._results[name] = future
             # Send job to worker
@@ -189,10 +179,11 @@ class TasqClient:
             return future
 
     def schedule_blocking(self, runnable, *args, **kwargs):
-        """Schedule a job to a remote worker wating for the result to be ready. Like `schedule` it
-        require a runnable task, and arguments to be passed with, cloudpickle will handle
-        dependencies shipping. Optional it is possible to give a name to the job, otherwise a UUID
-        will be defined
+        """
+        Schedule a job to a remote worker wating for the result to be ready.
+        Like `schedule` it require a runnable task, and arguments to be passed
+        with, cloudpickle will handle dependencies shipping. Optional it is
+        possible to give a name to the job, otherwise a UUID will be defined
 
         Args:
         -----
@@ -215,19 +206,21 @@ class TasqClientPool:
 
     # TODO WIP - still a rudimentary implementation
 
-    def __init__(self, config, router_class=RoundRobinRouter, debug=False):
-        # Debug flag
-        self._debug = debug
+    def __init__(self, config, router_class=RoundRobinRouter):
         # List of tuples defining host:port pairs to connect
         self._config = config
         # Router class
         self._router_class = router_class
         # Pool of clients
-        self._clients = [TasqClient(host, psport, plport) for host, psport, plport in self._config]
+        self._clients = [
+            TasqClient(host,
+                       psport,
+                       plport) for host, psport, plport in self._config
+        ]
         # Collect results in a dictionary
         self._results = {}
         # Workers actor system
-        self._system = ActorSystem('clientpool-actorsystem', self._debug)
+        self._system = ActorSystem('clientpool-actorsystem')
         # Workers pool
         self._workers = self._system.router_of(
             num_workers=len(self._clients),
@@ -242,8 +235,8 @@ class TasqClientPool:
 
     @property
     def results(self):
-        """Lazily check for new results and add them to the list of dictionaries before returning
-        it"""
+        """Lazily check for new results and add them to the list of
+        dictionaries before returning it"""
         return self._results
 
     def __iter__(self):
@@ -256,8 +249,9 @@ class TasqClientPool:
         self._system.shutdown()
 
     def map(self, func, iterable):
-        """Schedule a list of jobs represented by `iterable` in a round-robin manner. Can be seen as
-        equivalent as schedule with `RoundRobinRouter` routing."""
+        """Schedule a list of jobs represented by `iterable` in a round-robin
+        manner. Can be seen as equivalent as schedule with `RoundRobinRouter`
+        routing."""
         idx = 0
         for args, kwargs in iterable:
             if idx == len(self._clients) - 1:
@@ -268,9 +262,10 @@ class TasqClientPool:
             self._clients[idx].schedule(func, *args, **kwargs)
 
     def schedule(self, runnable, *args, **kwargs):
-        """Schedule a job to a remote worker, without blocking. Require a runnable task, and
-        arguments to be passed with, cloudpickle will handle dependencies shipping. Optional it is
-        possible to give a name to the job, otherwise a UUID will be defined"""
+        """Schedule a job to a remote worker, without blocking. Require a
+        runnable task, and arguments to be passed with, cloudpickle will handle
+        dependencies shipping. Optional it is possible to give a name to the
+        job, otherwise a UUID will be defined"""
         name = kwargs.pop('name', u'')
         job = Job(name, runnable, *args, **kwargs)
         future = self._workers.route(job)
@@ -278,7 +273,8 @@ class TasqClientPool:
         return future
 
     def schedule_blocking(self, runnable, *args, **kwargs):
-        """Schedule a job to a remote worker, awaiting for it to finish its execution."""
+        """Schedule a job to a remote worker, awaiting for it to finish its
+        execution."""
         timeout = kwargs.pop('timeout', None)
         future = self.schedule(runnable, *args, **kwargs)
         result = future.result(timeout)
