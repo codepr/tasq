@@ -7,7 +7,7 @@ remote workers.
 
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import abc
+from abc import ABCMeta, abstractmethod
 from concurrent.futures import Future
 from threading import Thread
 from collections import deque
@@ -29,7 +29,7 @@ class TasqClientNotConnected(Exception):
         super().__init__(self.message)
 
 
-class TasqClient(metaclass=abc.ABCMeta):
+class BaseTasqClient(metaclass=ABCMeta):
 
     """
     Simple client class to schedule jobs to remote workers, currently
@@ -89,14 +89,14 @@ class TasqClient(metaclass=abc.ABCMeta):
 
     def __repr__(self):
         status = 'connected' if self.is_connected else 'disconnected'
-        return f"<TasqClient worker=(tcp://{self.host}:{self.port}, " \
+        return f"<BaseTasqClient worker=(tcp://{self.host}:{self.port}, " \
                f"tcp://{self.host}:{self.port}) status={status}>"
 
-    @abc.abstractmethod
+    @abstractmethod
     def _make_client(self):
         pass
 
-    @abc.abstractmethod
+    @abstractmethod
     def _gather_results(self):
         pass
 
@@ -180,7 +180,7 @@ class TasqClient(metaclass=abc.ABCMeta):
         return result
 
 
-class ZMQTasqClient(TasqClient):
+class ZMQTasqClient(BaseTasqClient):
 
     """
     Simple client class to schedule jobs to remote workers, currently
@@ -225,7 +225,7 @@ class ZMQTasqClient(TasqClient):
                 self._results[job_result.name].set_result(job_result.value)
 
 
-class RedisTasqClient(TasqClient):
+class RedisTasqClient(BaseTasqClient):
 
     """"""
 
@@ -289,9 +289,9 @@ class TasqClientPool:
         self._router_class = router_class
         # Pool of clients
         self._clients = [
-            TasqClient(host,
-                       psport,
-                       plport) for host, psport, plport in self._config
+            ZMQTasqClient(host,
+                          psport,
+                          plport) for host, psport, plport in self._config
         ]
         # Collect results in a dictionary
         self._results = {}

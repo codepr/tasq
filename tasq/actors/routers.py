@@ -12,10 +12,12 @@ from abc import ABCMeta, abstractmethod
 
 class Router(metaclass=ABCMeta):
 
-    """Oversimplified router system to enroute messages to a pool of workers
+    """
+    Oversimplified router system to enroute messages to a pool of workers
     actor, by subclassing this it is possible to add different heuristic of
     message routing. If the len of the workers pool is just 1, ignore every
-    defined heuristic and send the message to that only worker."""
+    defined heuristic and send the message to that only worker.
+    """
 
     def __init__(self, workers, func_name=u'submit', *args, **kwargs):
         self._workers = workers
@@ -86,20 +88,23 @@ class SmallestMailboxRouter(Router):
     send the message to it"""
 
     def _route_message(self, msg):
-        """Create a dictionary formed by mailbox size of each actor as key, and
+        """
+        Create a dictionary formed by mailbox size of each actor as key, and
         the actor itself as value; by finding the minimum key in the
-        dictionary, it send the message to the actor associated with."""
-        actors = {w.mailbox_size: w for w in self._workers}
-        min_idx = min(k for k in actors)
-        idx = self._workers.index(actors[min_idx])
+        dictionary, it send the message to the actor associated with.
+        """
+        actor = min(self._workers, key=lambda w: w.mailbox_size)
+        idx = self._workers.index(actor)
         return self._call_func(idx, msg)
 
 
 def actor_pool(num_workers, actor_class, router_class,
                func_name='submit', *args, **kwargs):
-    """Return a router object by getting the definition directly from the
+    """
+    Return a router object by getting the definition directly from the
     module, raising an exception if not found. Init the object with a
-    `num_workers` actors"""
+    `num_workers` actors
+    """
     actorname = actor_class.__name__
     clients = kwargs.pop('clients', None)
     if clients:

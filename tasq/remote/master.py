@@ -273,6 +273,7 @@ class RedisActorMaster(RedisMaster):
         self._router_class = router_class
         # Worker's ActorSystem
         self._system = ActorSystem()
+        self._run = True
         # Actor router for responses
         self._responses = self._system.router_of(
             num_workers=self._num_workers,
@@ -291,19 +292,24 @@ class RedisActorMaster(RedisMaster):
         self._log.info("Worker type: Actor")
         self._run = Event()
         signal.signal(signal.SIGINT, self.stop)
+        signal.signal(signal.SIGTERM, self.stop)
 
     def stop(self):
         self._log.info("\nStopping..")
-        self._run.set()
+        self._run = False
+        self._done.wait()
 
     def serve_forever(self):
         """Receive jobs from clients with polling"""
-        while not self._run.is_set():
-            job = self._server.recv()
+        while self._run:
+            job = self._server.recv(5)
+            if not job:
+                continue
             self._log.info("Received job")
             res = self._workers.route(job)
             self._responses.route(res)
             self._log.info("Routed")
+        self._done.set()
 
 
 class Masters:

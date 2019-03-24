@@ -24,6 +24,8 @@ conf = get_config()
 
 
 class InvalidSignature(Exception):
+    """Ad-hoc exception for invalid digest signature which doesn't pass the
+    verification"""
     pass
 
 

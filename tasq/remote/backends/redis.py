@@ -71,6 +71,9 @@ class RedisBroker:
 
             return item
 
+        def list_working_items(self):
+            """Retrieve all items in the work_queue using LRANGE command"""
+            return self._db.lrange(self._work_queue_name, 0, -1)
 
     def __init__(self, host, port, db, name, namespace='queue'):
 
@@ -88,6 +91,9 @@ class RedisBroker:
 
     def get_available_result(self, timeout=None):
         return self._rq_res.get(True, timeout)
+
+    def get_working_jobs(self):
+        return self._rq.list_working_items()
 
 
 class RedisBackend:

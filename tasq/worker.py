@@ -84,7 +84,7 @@ class QueueWorker(Worker):
                 break
             job = decompress_and_unpickle(zipped_job)
             self._last_job = job
-            self._log.debug("%s - executing job %s", self.name, job.job_id)
+            self._log.debug("Executing job %s", job.job_id)
             if 'eta' in job.kwargs:
                 eta = job.kwargs.pop('eta')
                 multiples = {'h': 60 * 60, 'm': 60, 's': 1}
@@ -99,14 +99,12 @@ class QueueWorker(Worker):
                 response = job.execute()
                 self._job_queue.task_done()
                 self._log.debug(
-                    "%s - Job %s succesfully executed in %s s",
-                    self.name,
+                    "Job %s succesfully executed in %s s",
                     job.job_id,
                     job.execution_time()
                 )
                 self._log.debug(
-                    '%s - Timed job %s result = %s',
-                    self.name,
+                    'Timed job %s result = %s',
                     job.job_id,
                     response.value
                 )
@@ -120,8 +118,7 @@ class QueueWorker(Worker):
                 response = job.execute()
                 self._job_queue.task_done()
                 self._log.debug(
-                    "%s - Job %s succesfully executed in %s s",
-                    self.name,
+                    "Job %s succesfully executed in %s s",
                     job.job_id,
                     job.execution_time()
                 )
