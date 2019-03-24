@@ -28,11 +28,12 @@ class RedisBroker:
             except ConnectionError as e:
                 self.log.warning('Connection to DB failed with error %s.', e)
 
-            self._key = f'{namespace}:{name}'
+            self._queue_name = f'{namespace}:{name}'
+            self._work_queue_name = f'{namespace}:{name}:work'
 
         def qsize(self):
             """Return the approximate size of the queue."""
-            return self._db.llen(self._key)
+            return self._db.llen(self._queue_name)
 
         def empty(self):
             """Return True if the queue is empty, False otherwise."""
@@ -40,7 +41,7 @@ class RedisBroker:
 
         def put(self, item):
             """Put item into the queue."""
-            self._db.rpush(self._key, item)
+            self._db.lpush(self._queue_name, item)
 
         def get(self, block=True, timeout=None):
             """Remove and return an item from the queue.
@@ -48,9 +49,9 @@ class RedisBroker:
             If optional args block is true and timeout is None (the default), block
             if necessary until an item is available."""
             if block:
-                item = self._db.blpop(self._key, timeout=timeout)
+                item = self._db.brpop(self._queue_name, timeout=timeout)
             else:
-                item = self._db.lpop(self._key)
+                item = self._db.rpop(self._queue_name)
 
             if item:
                 item = item[1]
@@ -60,16 +61,33 @@ class RedisBroker:
             """Equivalent to get(False)."""
             return self.get(False)
 
+        def get_and_push(self, block=True, timeout=None):
+            """Get the tail of the queue, push into the head of the work queue
+            and return it in a single atomically transaction"""
+            if block:
+                item = self._db.brpoplpush(self._queue_name, self._work_queue_name)
+            else:
+                item = self._db.rpoplpush(self._queue_name, self._work_queue_name)
+
+            return item
+
 
     def __init__(self, host, port, db, name, namespace='queue'):
 
         self._rq = self.RedisQueue(name, host, port, db, namespace)
+        self._rq_res = self.RedisQueue(f'{name}:{result}', host, port, db, namespace)
 
     def put_job(self, serialized_job):
         self._rq.put(serialized_job)
 
+    def put_result(self, result):
+        self._rq_res.put(result)
+
     def get_next_job(self, timeout=None):
-        return self._rq.get(True, timeout)
+        return self._rq.get_and_push(True, timeout)
+
+    def get_available_result(self, timeout=None):
+        return self._rq_res.get(True, timeout)
 
 
 class RedisBackend:

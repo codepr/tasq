@@ -171,7 +171,17 @@ class RedisBrokerSocket(RedisBroker):
         frame = struct.pack(f'!H{len(signed)}s{len(zipped_data)}s',
                             len(signed), signed, zipped_data)
         return self.put_job(frame)
-        # return self.put_job((signed, zipped_data))
+
+    def send_result_data(self, result):
+        zipped_result = pickled_and_compress(result)
+        return self.put_result(zipped_result)
+
+    def send_result_signed(self, result):
+        zipped_result = pickle_and_compress(result)
+        signed = sign(conf['sharedkey'].encode(), zipped_result)
+        frame = struct.pack(f'!H{len(signed)}s{len(zipped_result)}s',
+                            len(signed), signed, zipped_result)
+        return self.put_result(frame)
 
     def recv_data(self, timeout=None, unpickle=True):
         """Receive data from the socket, deserialize and decompress it with
@@ -188,6 +198,35 @@ class RedisBrokerSocket(RedisBroker):
         talk to us, deserialize and decompress it with cloudpickle
         """
         payload = self.get_next_job(timeout)
+        sign_len = struct.unpack('!H', payload[:2])
+        recv_digest, pickled_data = struct.unpack(
+            f'!{sign_len[0]}s{len(payload) - sign_len[0] - 2}s',
+            payload[2:]
+        )
+        # recv_digest, pickled_data = payload
+        try:
+            verifyhmac(conf['sharedkey'].encode(), recv_digest, pickled_data)
+        except InvalidSignature:
+            # TODO log here
+            raise
+        else:
+            if unpickle:
+                return decompress_and_unpickle(pickled_data)
+            return pickled_data
+
+    def recv_result_data(self, timeout=None, unpickle=True):
+        zipped_result = self.get_available_result(timeout)
+        if unpickle:
+            return decompress_and_unpickle(zipped_result)
+        return zipped_result
+
+    def recv_result_signed(self, timeout=None, unpickle=True):
+        """
+        Receive data from the socket, check the digital signature in order
+        to verify the integrity of data and the that the sender is allowed to
+        talk to us, deserialize and decompress it with cloudpickle
+        """
+        payload = self.get_available_result(timeout)
         sign_len = struct.unpack('!H', payload[:2])
         recv_digest, pickled_data = struct.unpack(
             f'!{sign_len[0]}s{len(payload) - sign_len[0] - 2}s',

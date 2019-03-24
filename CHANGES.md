@@ -1,3 +1,10 @@
+### 1.1.0
+(Mar 23, 2019)
+
+- Refactored log system
+- Started backend broker support for job queues and persistence
+- Add redis client
+
 ### 1.0.1
 (Jul 15, 2018)
 

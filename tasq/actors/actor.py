@@ -21,9 +21,11 @@ class ActorExit(Exception):
 
 class Actor:
 
-    """Class modeling a basic erlang-style actor, a simple object which can be
+    """
+    Class modeling a basic erlang-style actor, a simple object which can be
     used to push messages into a mailbox and process them in separate thread,
-    concurrently, without sharing any state with other actors"""
+    concurrently, without sharing any state with other actors
+    """
 
     def __init__(self, name=u'', ctx=None):
         # Assingn a default uuid name in case of no name set

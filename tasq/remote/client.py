@@ -7,6 +7,7 @@ remote workers.
 
 from __future__ import absolute_import, division, print_function, unicode_literals
 
+import abc
 from concurrent.futures import Future
 from threading import Thread
 from collections import deque
@@ -28,7 +29,7 @@ class TasqClientNotConnected(Exception):
         super().__init__(self.message)
 
 
-class TasqClient:
+class TasqClient(metaclass=abc.ABCMeta):
 
     """
     Simple client class to schedule jobs to remote workers, currently
@@ -36,22 +37,15 @@ class TasqClient:
     asynchronous one which collect results in a dedicated dictionary
     """
 
-    def __init__(self, host, port, plport=None, sign_data=False, unix_socket=False):
+    def __init__(self, host, port, sign_data=False):
         # Host address of a remote master to connect to
         self._host = host
         # Port for push side (outgoing) of the communication channel
         self._port = port
-        # Pull port for ingoing messages, containing result data
-        self._plport = plport or port + 1
         # Send digital signed data
         self._sign_data = sign_data
-        # Unix socket flag, if set to true, unix sockets for interprocess
-        # communication will be used and ports will be used to differentiate
-        # push and pull channel
-        self._unix_socket = unix_socket
         # Client reference, set up the communication with a Master
-        self._client = ConnectionFactory \
-            .make_client(host, port, self._plport, sign_data, unix_socket)
+        self._client = self._make_client()
         # Connection flag
         self._is_connected = False
         # Results dictionary, mapping task_name -> result
@@ -72,10 +66,6 @@ class TasqClient:
         return self._port
 
     @property
-    def plport(self):
-        return self._plport
-
-    @property
     def is_connected(self):
         return self._is_connected
 
@@ -86,10 +76,6 @@ class TasqClient:
     @property
     def results(self):
         return self._results
-
-    @property
-    def unix_socket(self):
-        return self._unix_socket
 
     def __enter__(self):
         if not self.is_connected:
@@ -102,23 +88,17 @@ class TasqClient:
         self.close()
 
     def __repr__(self):
-        socket_type = 'tcp' if not self.unix_socket else 'unix'
         status = 'connected' if self.is_connected else 'disconnected'
-        return f"<TasqClient worker=({socket_type}://{self.host}:{self.port}, " \
-               f"{socket_type}://{self.host}:{self.plport}) status={status}>"
+        return f"<TasqClient worker=(tcp://{self.host}:{self.port}, " \
+               f"tcp://{self.host}:{self.port}) status={status}>"
 
+    @abc.abstractmethod
+    def _make_client(self):
+        pass
+
+    @abc.abstractmethod
     def _gather_results(self):
-        """Gathering subroutine, must be run in another thread to concurrently
-        listen for results and store them into a dedicated dictionary"""
-        while True:
-            try:
-                job_result = self._client.recv()
-            except (zmq.error.ContextTerminated, zmq.error.ZMQError):
-                pass
-            if not job_result.value and job_result.exc:
-                self._results[job_result.name].set_result(job_result.exc)
-            else:
-                self._results[job_result.name].set_result(job_result.value)
+        pass
 
     def connect(self):
         """Connect to the remote workers, setting up PUSH and PULL channels,
@@ -198,6 +178,85 @@ class TasqClient:
         future = self.schedule(runnable, *args, **kwargs)
         result = future.result(timeout)
         return result
+
+
+class ZMQTasqClient(TasqClient):
+
+    """
+    Simple client class to schedule jobs to remote workers, currently
+    supports a synchronous way of calling tasks awaiting for results and an
+    asynchronous one which collect results in a dedicated dictionary
+    """
+
+    def __init__(self, host, port, plport=None, sign_data=False, unix_socket=False):
+        self._plport = plport or port + 1
+        # Unix socket flag, if set to true, unix sockets for interprocess
+        # communication will be used and ports will be used to differentiate
+        # push and pull channel
+        self._unix_socket = unix_socket
+        super().__init__(host, port, sign_data)
+
+    @property
+    def plport(self):
+        return self._plport
+
+    def __repr__(self):
+        socket_type = 'tcp' if not self.unix_socket else 'unix'
+        status = 'connected' if self.is_connected else 'disconnected'
+        return f"<ZMQTasqClient worker=({socket_type}://{self.host}:{self.port}, " \
+               f"{socket_type}://{self.host}:{self.plport}) status={status}>"
+
+    def _make_client(self):
+        return ConnectionFactory \
+            .make_client(self.host, self.port, self.plport,
+                         self._sign_data, self._unix_socket)
+
+    def _gather_results(self):
+        """Gathering subroutine, must be run in another thread to concurrently
+        listen for results and store them into a dedicated dictionary"""
+        while True:
+            try:
+                job_result = self._client.recv()
+            except (zmq.error.ContextTerminated, zmq.error.ZMQError):
+                pass
+            if not job_result.value and job_result.exc:
+                self._results[job_result.name].set_result(job_result.exc)
+            else:
+                self._results[job_result.name].set_result(job_result.value)
+
+
+class RedisTasqClient(TasqClient):
+
+    """"""
+
+    def __init__(self, host, port, db, name, sign_data=False):
+        self._db = db
+        self._name = name
+        super().__init__(host, port, sign_data)
+
+    @property
+    def name(self):
+        return self._name
+
+    def __repr__(self):
+        status = 'connected' if self.is_connected else 'disconnected'
+        return f"<RedisTasqClient worker=(redis://{self.host}:{self.port}, " \
+               f"redis://{self.host}:{self.port}) status={status}>"
+
+    def _make_client(self):
+        return ConnectionFactory \
+            .make_redis_client(self.host, self.port, self._db,
+                               self._name, self._sign_data)
+
+    def _gather_results(self):
+        """Gathering subroutine, must be run in another thread to concurrently
+        listen for results and store them into a dedicated dictionary"""
+        while True:
+            job_result = self._client.recv_result()
+            if not job_result.value and job_result.exc:
+                self._results[job_result.name].set_result(job_result.exc)
+            else:
+                self._results[job_result.name].set_result(job_result.value)
 
 
 class TasqClientPool:
