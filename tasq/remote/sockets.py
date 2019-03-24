@@ -173,7 +173,7 @@ class RedisBrokerSocket(RedisBroker):
         return self.put_job(frame)
 
     def send_result_data(self, result):
-        zipped_result = pickled_and_compress(result)
+        zipped_result = pickle_and_compress(result)
         return self.put_result(zipped_result)
 
     def send_result_signed(self, result):

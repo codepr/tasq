@@ -34,16 +34,16 @@ def get_parser():
 
 
 def start_worker(host, port, sign_data, unix_socket, worker_type):
-    from tasq.remote.master import ActorMaster, QueueMaster
+    from tasq.remote.master import ZMQActorMaster, ZMQQueueMaster
     if worker_type == WorkerType.ActorWorker:
-        master = ActorMaster(host, port, port + 1,
-                             sign_data=sign_data, unix_socket=unix_socket)
+        master = ZMQActorMaster(host, port, port + 1,
+                                sign_data=sign_data, unix_socket=unix_socket)
     elif worker_type == WorkerType.ThreadWorker:
-        master = QueueMaster(host, port, port + 1, worker_class=ThreadQueueWorker,
-                             sign_data=sign_data, unix_socket=unix_socket)
+        master = ZMQQueueMaster(host, port, port + 1, worker_class=ThreadQueueWorker,
+                                sign_data=sign_data, unix_socket=unix_socket)
     else:
-        master = QueueMaster(host, port, port + 1,
-                             sign_data=sign_data, unix_socket=unix_socket)
+        master = ZMQQueueMaster(host, port, port + 1,
+                                sign_data=sign_data, unix_socket=unix_socket)
     master.serve_forever()
 
 

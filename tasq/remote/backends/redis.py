@@ -75,7 +75,7 @@ class RedisBroker:
     def __init__(self, host, port, db, name, namespace='queue'):
 
         self._rq = self.RedisQueue(name, host, port, db, namespace)
-        self._rq_res = self.RedisQueue(f'{name}:{result}', host, port, db, namespace)
+        self._rq_res = self.RedisQueue(f'{name}:result', host, port, db, namespace)
 
     def put_job(self, serialized_job):
         self._rq.put(serialized_job)

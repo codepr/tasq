@@ -246,7 +246,7 @@ class RedisTasqClient(TasqClient):
     def _make_client(self):
         return ConnectionFactory \
             .make_redis_client(self.host, self.port, self._db,
-                               self._name, self._sign_data)
+                               self._name, secure=self._sign_data)
 
     def _gather_results(self):
         """Gathering subroutine, must be run in another thread to concurrently
@@ -257,6 +257,23 @@ class RedisTasqClient(TasqClient):
                 self._results[job_result.name].set_result(job_result.exc)
             else:
                 self._results[job_result.name].set_result(job_result.value)
+
+    def connect(self):
+        """Connect to the remote workers, setting up PUSH and PULL channels,
+        respectively used to send tasks and to retrieve results back"""
+        if not self.is_connected:
+            self._is_connected = True
+            # Start gathering thread
+            self._gatherer.start()
+            # Check if there are pending requests and in case, empty the queue
+            while self._pending:
+                job = self._pending.pop()
+                self.schedule(job.func, *job.args, name=job.job_id, **job.kwargs)
+
+    def disconnect(self):
+        """Disconnect PUSH and PULL sockets"""
+        if self.is_connected:
+            self._is_connected = False
 
 
 class TasqClientPool:
