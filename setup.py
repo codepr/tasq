@@ -4,7 +4,7 @@ with open('README.md') as readme_file:
     readme = readme_file.read()
 
 # Dependencies
-required = ['zmq', 'cloudpickle']
+required = ['zmq', 'cloudpickle', 'redis', 'pika']
 
 setup(
     name='tasq',

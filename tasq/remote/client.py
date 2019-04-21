@@ -102,7 +102,8 @@ class BaseTasqClient(metaclass=ABCMeta):
 
     def connect(self):
         """Connect to the remote workers, setting up PUSH and PULL channels,
-        respectively used to send tasks and to retrieve results back"""
+        respectively used to send tasks and to retrieve results back
+        """
         if not self.is_connected:
             self._client.connect()
             self._is_connected = True
@@ -130,8 +131,7 @@ class BaseTasqClient(metaclass=ABCMeta):
         return {k: v for k, v in self._results.items() if v.done() is False}
 
     def schedule(self, runnable, *args, **kwargs):
-        """
-        Schedule a job to a remote worker, without blocking. Require a
+        """Schedule a job to a remote worker, without blocking. Require a
         runnable task, and arguments to be passed with, cloudpickle will handle
         dependencies shipping. Optional it is possible to give a name to the
         job, otherwise a UUID will be defined
@@ -149,18 +149,17 @@ class BaseTasqClient(metaclass=ABCMeta):
         if not self.is_connected:
             self._log.debug("Client not connected, appending job to pending queue.")
             self._pending.appendleft(job)
-        else:
-            # Create a Future and return it, _gatherer thread will set the
-            # result once received
-            future = Future()
-            self._results[name] = future
-            # Send job to worker
-            self._client.send(job)
-            return future
+            return None
+        # Create a Future and return it, _gatherer thread will set the
+        # result once received
+        future = Future()
+        self._results[name] = future
+        # Send job to worker
+        self._client.send(job)
+        return future
 
     def schedule_blocking(self, runnable, *args, **kwargs):
-        """
-        Schedule a job to a remote worker wating for the result to be ready.
+        """Schedule a job to a remote worker wating for the result to be ready.
         Like `schedule` it require a runnable task, and arguments to be passed
         with, cloudpickle will handle dependencies shipping. Optional it is
         possible to give a name to the job, otherwise a UUID will be defined
@@ -182,8 +181,7 @@ class BaseTasqClient(metaclass=ABCMeta):
 
 class ZMQTasqClient(BaseTasqClient):
 
-    """
-    Simple client class to schedule jobs to remote workers, currently
+    """Simple client class to schedule jobs to remote workers, currently
     supports a synchronous way of calling tasks awaiting for results and an
     asynchronous one which collect results in a dedicated dictionary
     """
@@ -201,7 +199,7 @@ class ZMQTasqClient(BaseTasqClient):
         return self._plport
 
     def __repr__(self):
-        socket_type = 'tcp' if not self.unix_socket else 'unix'
+        socket_type = 'tcp' if not self._unix_socket else 'unix'
         status = 'connected' if self.is_connected else 'disconnected'
         return f"<ZMQTasqClient worker=({socket_type}://{self.host}:{self.port}, " \
                f"{socket_type}://{self.host}:{self.plport}) status={status}>"
@@ -213,7 +211,8 @@ class ZMQTasqClient(BaseTasqClient):
 
     def _gather_results(self):
         """Gathering subroutine, must be run in another thread to concurrently
-        listen for results and store them into a dedicated dictionary"""
+        listen for results and store them into a dedicated dictionary
+        """
         while True:
             try:
                 job_result = self._client.recv()
@@ -250,7 +249,8 @@ class RedisTasqClient(BaseTasqClient):
 
     def _gather_results(self):
         """Gathering subroutine, must be run in another thread to concurrently
-        listen for results and store them into a dedicated dictionary"""
+        listen for results and store them into a dedicated dictionary
+        """
         while True:
             job_result = self._client.recv_result()
             if not job_result.value and job_result.exc:
@@ -260,7 +260,60 @@ class RedisTasqClient(BaseTasqClient):
 
     def connect(self):
         """Connect to the remote workers, setting up PUSH and PULL channels,
-        respectively used to send tasks and to retrieve results back"""
+        respectively used to send tasks and to retrieve results back
+        """
+        if not self.is_connected:
+            self._is_connected = True
+            # Start gathering thread
+            self._gatherer.start()
+            # Check if there are pending requests and in case, empty the queue
+            while self._pending:
+                job = self._pending.pop()
+                self.schedule(job.func, *job.args, name=job.job_id, **job.kwargs)
+
+    def disconnect(self):
+        """Disconnect PUSH and PULL sockets"""
+        if self.is_connected:
+            self._is_connected = False
+
+
+class RabbitMQTasqClient(BaseTasqClient):
+
+    """"""
+
+    def __init__(self, host, port, name, sign_data=False):
+        self._name = name
+        super().__init__(host, port, sign_data)
+
+    @property
+    def name(self):
+        return self._name
+
+    def __repr__(self):
+        status = 'connected' if self.is_connected else 'disconnected'
+        return f"<RabbitMQTasqClient worker=(rabbitmq://{self.host}:{self.port}, " \
+               f"rabbitmq://{self.host}:{self.port}) status={status}>"
+
+    def _make_client(self):
+        return ConnectionFactory \
+            .make_rabbitmq_client(self.host, self.port, 'sender',
+                                  self._name, secure=self._sign_data)
+
+    def _gather_results(self):
+        """Gathering subroutine, must be run in another thread to concurrently
+        listen for results and store them into a dedicated dictionary
+        """
+        while True:
+            job_result = self._client.recv_result()
+            if not job_result.value and job_result.exc:
+                self._results[job_result.name].set_result(job_result.exc)
+            else:
+                self._results[job_result.name].set_result(job_result.value)
+
+    def connect(self):
+        """Connect to the remote workers, setting up PUSH and PULL channels,
+        respectively used to send tasks and to retrieve results back
+        """
         if not self.is_connected:
             self._is_connected = True
             # Start gathering thread

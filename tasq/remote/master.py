@@ -291,12 +291,83 @@ class RedisActorMaster(RedisMaster):
         )
         self._log.info("Worker type: Actor")
         self._run = Event()
+        self._done = Event()
         signal.signal(signal.SIGINT, self.stop)
         signal.signal(signal.SIGTERM, self.stop)
 
     def stop(self):
         self._log.info("\nStopping..")
         self._run = False
+        self._done.wait()
+
+    def serve_forever(self):
+        """Receive jobs from clients with polling"""
+        while self._run:
+            job = self._server.recv(5)
+            if not job:
+                continue
+            self._log.info("Received job")
+            res = self._workers.route(job)
+            self._responses.route(res)
+            self._log.info("Routed")
+        self._done.set()
+
+
+class RabbitMQMaster(BaseMaster):
+
+    def __init__(self, host, port, name, num_workers=max_workers(), sign_data=False):
+        self._name = name
+        super().__init__(host, port, num_workers, sign_data)
+
+    @property
+    def name(self):
+        return self._name
+
+    def stop(self):
+        self._server.close()
+
+    def _init_server(self):
+        return ConnectionFactory.make_rabbitmq_client(
+            self._host, self._port, 'receiver',
+            self._name, secure=self._sign_data
+        )
+
+
+class RabbitMQActorMaster(RabbitMQMaster):
+
+    def __init__(self, host, port, name, num_workers=max_workers(),
+                 router_class=RoundRobinRouter, sign_data=False):
+        super().__init__(host, port, name, num_workers, sign_data)
+        # Routing type
+        self._router_class = router_class
+        # Worker's ActorSystem
+        self._system = ActorSystem()
+        self._run = True
+        # Actor router for responses
+        self._responses = self._system.router_of(
+            num_workers=self._num_workers,
+            actor_class=ResponseActor,
+            router_class=SmallestMailboxRouter,
+            func_name='send',
+            sendfunc=self._server.send_result
+        )
+        # Generic worker actor router
+        self._workers = self._system.router_of(
+            num_workers=self._num_workers,
+            actor_class=WorkerActor,
+            router_class=self._router_class,
+            response_actor=self._responses
+        )
+        self._log.info("Worker type: Actor")
+        self._run = Event()
+        self._done = Event()
+        signal.signal(signal.SIGINT, self.stop)
+        signal.signal(signal.SIGTERM, self.stop)
+
+    def stop(self):
+        self._log.info("\nStopping..")
+        self._run = False
+        self._server.close()
         self._done.wait()
 
     def serve_forever(self):

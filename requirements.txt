@@ -1,2 +1,4 @@
 zmq
+redis
+pika
 cloudpickle

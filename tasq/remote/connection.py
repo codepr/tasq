@@ -11,13 +11,12 @@ from abc import ABCMeta, abstractmethod
 
 import zmq
 from .sockets import AsyncCloudPickleContext, CloudPickleContext
-from .sockets import RedisBrokerSocket
+from .sockets import RedisBrokerSocket, RabbitMQSocket
 
 
 class Server(metaclass=ABCMeta):
 
-    """
-    Connection class, set up two communication channels, a PUSH one using a
+    """Connection class, set up two communication channels, a PUSH one using a
     synchronous socket and a PULL one using an asynchronous socket. Each socket
     is a subclass of zmq sockets given the capability to handle cloudpickled
     data
@@ -52,7 +51,8 @@ class Server(metaclass=ABCMeta):
 
     def bind(self):
         """Binds PUSH and PULL channel sockets to the respective address:port
-        pairs defined in the constructor"""
+        pairs defined in the constructor
+        """
         self._pull_socket.bind(f'tcp://{self._host}:{self._pull_port}')
         self._push_socket.bind(f'tcp://{self._host}:{self._push_port}')
 
@@ -66,8 +66,7 @@ class Server(metaclass=ABCMeta):
 
 class MixedServer(Server):
 
-    """
-    Connection class, set up two communication channels, a PUSH one using a
+    """Connection class, set up two communication channels, a PUSH one using a
     synchronous socket and a PULL one using an asynchronous socket. Each socket
     is a subclass of zmq sockets given the capability to handle cloudpickled
     data
@@ -88,7 +87,8 @@ class MixedServer(Server):
 
     def send(self, data, flags=0):
         """Send data through the PUSH socket, if a secure flag is set it sign
-        it before sending"""
+        it before sending
+        """
         if self._secure is False:
             self._push_socket.send_data(data, flags)
         else:
@@ -96,7 +96,8 @@ class MixedServer(Server):
 
     async def recv(self, unpickle=True, flags=0):
         """Asynchronous receive data from the PULL socket, if a secure flag is
-        set it checks for integrity of the received data"""
+        set it checks for integrity of the received data
+        """
         if self._secure is False:
             return await self._pull_socket.recv_data(unpickle, flags)
         return await self._pull_socket.socket.recv_signed(unpickle, flags)
@@ -111,7 +112,8 @@ class AsyncServer(Server):
 
     async def send(self, data, unpickle=True, flags=0):
         """Send data through the PUSH socket, if a secure flag is set it sign
-        it before sending"""
+        it before sending
+        """
         if self._secure is False:
             await self._push_socket.send_data(data, unpickle, flags)
         else:
@@ -119,7 +121,8 @@ class AsyncServer(Server):
 
     async def recv(self, unpickle=True, flags=0):
         """Asynchronous receive data from the PULL socket, if a secure flag is
-        set it checks for integrity of the received data"""
+        set it checks for integrity of the received data
+        """
         if self._secure is False:
             return await self._pull_socket.recv_data(unpickle, flags)
         return await self._pull_socket.socket.recv_signed(unpickle, flags)
@@ -127,8 +130,7 @@ class AsyncServer(Server):
 
 class MixedUnixServer(MixedServer):
 
-    """
-    Connection class derived from MixedServer, which uses UNIX sockets
+    """Connection class derived from MixedServer, which uses UNIX sockets
     instead of TCP sockets, pull and push port are used to define the name of
     the file descriptor instead of the address.
 
@@ -138,8 +140,7 @@ class MixedUnixServer(MixedServer):
     """
 
     def bind(self):
-        """
-        Binds PUSH and PULL channel sockets to the respective address-port
+        """Binds PUSH and PULL channel sockets to the respective address-port
         pairs defined in the constructor, being used UNIX sockets, push and
         pull ports are used to define file descriptor on the filesystem.
         """
@@ -149,8 +150,7 @@ class MixedUnixServer(MixedServer):
 
 class AsyncUnixServer(AsyncServer):
 
-    """
-    Connection class derived from MixedServer, which uses UNIX sockets
+    """Connection class derived from MixedServer, which uses UNIX sockets
     instead of TCP sockets, pull and push port are used to define the name of
     the file descriptor instead of the address.
 
@@ -160,8 +160,7 @@ class AsyncUnixServer(AsyncServer):
     """
 
     def bind(self):
-        """
-        Binds PUSH and PULL channel sockets to the respective address-port
+        """Binds PUSH and PULL channel sockets to the respective address-port
         pairs defined in the constructor, being used UNIX sockets, push and
         pull ports are used to define file descriptor on the filesystem.
         """
@@ -171,8 +170,7 @@ class AsyncUnixServer(AsyncServer):
 
 class Connection:
 
-    """
-    Connection class, set up two communication channels, a PUSH and a PULL
+    """Connection class, set up two communication channels, a PUSH and a PULL
     channel using two synchronous TCP sockets. Each socket is a subclass of zmq
     sockets given the capability to handle cloudpickled data
     """
@@ -192,8 +190,7 @@ class Connection:
         self._pull_socket = self._ctx.socket(zmq.PULL)
 
     def connect(self):
-        """
-        Connect to the remote workers, setting up PUSH and PULL channels
+        """Connect to the remote workers, setting up PUSH and PULL channels
         using TCP sockets, respectively used to send tasks and to retrieve
         results back
         """
@@ -213,7 +210,8 @@ class Connection:
 
     def send(self, data, flags=0):
         """Send data through the PUSH socket, if a secure flag is set it sign
-        it before sending"""
+        it before sending
+        """
         if self._secure is False:
             self._push_socket.send_data(data, flags)
         else:
@@ -221,7 +219,8 @@ class Connection:
 
     def recv(self, unpickle=True, flags=0):
         """Receive data from the PULL socket, if a secure flag is set it checks
-        for integrity of the received data"""
+        for integrity of the received data
+        """
         if self._secure is False:
             return self._pull_socket.recv_data(unpickle, flags)
         return self._pull_socket.socket.recv_signed(unpickle, flags)
@@ -229,16 +228,14 @@ class Connection:
 
 class UnixConnection(Connection):
 
-    """
-    Connection class derived from Connection, set up two communication
+    """Connection class derived from Connection, set up two communication
     channels, a PUSH and a PULL channel using two synchronous UNIX sockets.
     Each socket is a subclass of zmq sockets given the capability to handle
     cloudpickled data
     """
 
     def connect(self):
-        """
-        Connect to the remote workers, setting up PUSH and PULL channels
+        """Connect to the remote workers, setting up PUSH and PULL channels
         using UNIX sockets, respectively used to send tasks and to retrieve
         results back
         """
@@ -259,7 +256,8 @@ class RedisConnection:
 
     def send(self, data):
         """Send data through the PUSH socket, if a secure flag is set it sign
-        it before sending"""
+        it before sending
+        """
         if self._secure is False:
             self._rb.send_data(data)
         else:
@@ -273,7 +271,8 @@ class RedisConnection:
 
     def recv(self, timeout=None, unpickle=True):
         """Receive data from the PULL socket, if a secure flag is set it checks
-        for integrity of the received data"""
+        for integrity of the received data
+        """
         if self._secure is False:
             return self._rb.recv_data(timeout, unpickle)
         return self._rb.recv_signed(timeout, unpickle)
@@ -283,16 +282,60 @@ class RedisConnection:
             return self._rb.recv_result_data(timeout, unpickle)
         return self._rb.recv_result_signed(timeout, unpickle)
 
+    def close():
+        self._rb.close()
+
+
+class RabbitMQConnection:
+
+    def __init__(self, host, port, role, name,
+                 namespace='queue', secure=False):
+        self._rb = RabbitMQSocket(host, port, role, name, namespace)
+        self._secure = secure
+
+    def send(self, data):
+        """Send data through the PUSH socket, if a secure flag is set it sign
+        it before sending
+        """
+        if self._secure is False:
+            self._rb.send_data(data)
+        else:
+            self._rb.send_signed(data)
+
+    def send_result(self, result):
+        if self._secure is False:
+            self._rb.send_result_data(result)
+        else:
+            self._rb.send_result_signed(result)
+
+    def recv(self, timeout=None, unpickle=True):
+        """Receive data from the PULL socket, if a secure flag is set it checks
+        for integrity of the received data
+        """
+        if self._secure is False:
+            return self._rb.recv_data(timeout, unpickle)
+        return self._rb.recv_signed(timeout, unpickle)
+
+    def recv_result(self, timeout=None, unpickle=True):
+        if self._secure is False:
+            return self._rb.recv_result_data(timeout, unpickle)
+        return self._rb.recv_result_signed(timeout, unpickle)
+
+    def close(self):
+        self._rb.close()
+
 
 class ConnectionFactory:
 
     """Abstract Factory class, expose static methods to create the correct
-    class"""
+    class
+    """
 
     @staticmethod
     def make_server(host, push_port, pull_port, secure, unix_socket):
         """Create and return a MixedServer class, if unix_socket flag is set to
-        true, a MixedUnixServer class is istantiated and returned instead."""
+        true, a MixedUnixServer class is istantiated and returned instead.
+        """
         if unix_socket is False:
             return MixedServer(host, push_port, pull_port, secure)
         return MixedUnixServer(host, push_port, pull_port, secure)
@@ -300,7 +343,8 @@ class ConnectionFactory:
     @staticmethod
     def make_asyncserver(host, push_port, pull_port, secure, unix_socket):
         """Create and return a MixedServer class, if unix_socket flag is set to
-        true, a MixedUnixServer class is istantiated and returned instead."""
+        true, a MixedUnixServer class is istantiated and returned instead.
+        """
         if unix_socket is False:
             return AsyncServer(host, push_port, pull_port, secure)
         return AsyncUnixServer(host, push_port, pull_port, secure)
@@ -308,11 +352,19 @@ class ConnectionFactory:
     @staticmethod
     def make_client(host, push_port, pull_port, secure, unix_socket):
         """Create and return a Connection class, if unix_socket flag is set to
-        true, a UnixConnection class is istantiated and returned instead."""
+        true, a UnixConnection class is istantiated and returned instead.
+        """
         if unix_socket is False:
             return Connection(host, push_port, pull_port, secure)
         return UnixConnection(host, push_port, pull_port, secure)
 
     @staticmethod
-    def make_redis_client(host, port, db, name, namespace='queue', secure=False):
+    def make_redis_client(host, port, db, name,
+                          namespace='queue', secure=False):
         return RedisConnection(host, port, db, name, namespace, secure=secure)
+
+    @staticmethod
+    def make_rabbitmq_client(host, port, role, name,
+                             namespace='queue', secure=False):
+        return RabbitMQConnection(host, port, role, name,
+                                  namespace, secure=secure)

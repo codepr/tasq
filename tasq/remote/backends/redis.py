@@ -1,4 +1,6 @@
 """
+tasq.remote.backends.redis.py
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 """
 
 import json
@@ -20,7 +22,6 @@ class RedisBroker:
 
         def __init__(self, name, host, port, db, namespace='queue'):
             """The default connection parameters are: host='localhost', port=6379, db=0"""
-
             self._db = redis.StrictRedis(host=host, port=port, db=db)
 
             try:
@@ -75,6 +76,9 @@ class RedisBroker:
             """Retrieve all items in the work_queue using LRANGE command"""
             return self._db.lrange(self._work_queue_name, 0, -1)
 
+        def close(self):
+            self._db.connection_pool.disconnect()
+
     def __init__(self, host, port, db, name, namespace='queue'):
 
         self._rq = self.RedisQueue(name, host, port, db, namespace)
@@ -94,6 +98,10 @@ class RedisBroker:
 
     def get_working_jobs(self):
         return self._rq.list_working_items()
+
+    def close(self):
+        self._rq.close()
+        self._rq_res.close()
 
 
 class RedisBackend:
@@ -153,8 +161,8 @@ class RedisBackend:
 
             :return: A list of dictionaries that contains all data.
             """
-            devices = self._db.keys()
-            return {k.decode('utf8'): self.read(k) for k in devices if k not in self.excludes}
+            items = self._db.keys()
+            return {k.decode('utf8'): self.read(k) for k in items}
 
     def __init__(self, host, port, db):
 
