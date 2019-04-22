@@ -1,3 +1,10 @@
+### 1.1.5
+(Apr 22, 2019)
+
+- Renamed `master` -> `supervisor`
+- Added RabbitMQ to supported backends, still working on a common interface
+- Refactored some parts on connection
+
 ### 1.1.0
 (Mar 23, 2019)
 
@@ -10,7 +17,7 @@
 
 - Added repeated jobs capabilities to process/thread queue workers too (Previously only Actor
     worker could achieve that)
-- Fixed some bugs, renamed `ProcessWorker -> QueueWorker` and `ProcessMaster -> QueueMaster`
+- Fixed some bugs, renamed `ProcessWorker` -> `QueueWorker` and `ProcessMaster` -> `QueueMaster`
 
 ### 1.0.0
 (Jul 14, 2018)

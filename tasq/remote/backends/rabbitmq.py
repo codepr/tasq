@@ -37,12 +37,10 @@ class RabbitMQBackend:
         return channel
 
     def _get_job(self, ch, method, _, body):
-        print("Job incoming")
         self._jobs.put(body)
         ch.basic_ack(delivery_tag=method.delivery_tag)
 
     def _get_res(self, ch, method, _, body):
-        print("Result incoming")
         self._results.put(body)
         ch.basic_ack(delivery_tag=method.delivery_tag)
 
@@ -65,15 +63,17 @@ class RabbitMQBackend:
         channel = self._get_channel()
         channel.basic_publish('', self._result_name, result)
 
-    def get_next_job(self):
-        return self._jobs.get()
-        # _, _, result = next(self._consumer)
-        # return result
+    def get_next_job(self, timeout=None):
+        try:
+            return self._jobs.get(timeout)
+        except queue.Empty:
+            return None
 
-    def get_available_result(self):
-        return self._results.get()
-        # _, _, result = next(self._res_consumer)
-        # return result
+    def get_available_result(self, timeout=None):
+        try:
+            return self._results.get(timeout)
+        except queue.Empty:
+            return None
 
     def close(self):
         pass

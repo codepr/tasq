@@ -10,8 +10,9 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 from abc import ABCMeta, abstractmethod
 
 import zmq
-from .sockets import AsyncCloudPickleContext, CloudPickleContext
-from .sockets import RedisBrokerSocket, RabbitMQSocket
+from .backends.redis import RedisBroker
+from .backends.rabbitmq import RabbitMQBackend
+from .sockets import AsyncCloudPickleContext, CloudPickleContext, BackendSocket
 
 
 class Server(metaclass=ABCMeta):
@@ -73,7 +74,8 @@ class MixedServer(Server):
     """
 
     def _make_sockets(self):
-        self._ctx = {'sync': CloudPickleContext(), 'async': AsyncCloudPickleContext()}
+        self._ctx = {'sync': CloudPickleContext(),
+                     'async': AsyncCloudPickleContext()}
         self._push_socket = self._ctx['sync'].socket(zmq.PUSH)
         self._pull_socket = self._ctx['async'].socket(zmq.PULL)
 
@@ -135,8 +137,8 @@ class MixedUnixServer(MixedServer):
     the file descriptor instead of the address.
 
     e.g.
-    PUSH unix socket: /tmp/master-9091
-    PULL unix socket: /tmp/master-9092
+    PUSH unix socket: /tmp/supervisor-9091
+    PULL unix socket: /tmp/supervisor-9092
     """
 
     def bind(self):
@@ -155,8 +157,8 @@ class AsyncUnixServer(AsyncServer):
     the file descriptor instead of the address.
 
     e.g.
-    PUSH unix socket: /tmp/master-9091
-    PULL unix socket: /tmp/master-9092
+    PUSH unix socket: /tmp/supervisor-9091
+    PULL unix socket: /tmp/supervisor-9092
     """
 
     def bind(self):
@@ -248,10 +250,10 @@ class UnixConnection(Connection):
         self._push_socket.disconnect(f'ipc://{self._host}-{self._push_port}')
 
 
-class RedisConnection:
+class BackendConnection:
 
-    def __init__(self, host, port, db, name, namespace='queue', secure=False):
-        self._rb = RedisBrokerSocket(host, port, db, name, namespace)
+    def __init__(self, backend, secure=False):
+        self._backend = backend
         self._secure = secure
 
     def send(self, data):
@@ -259,76 +261,37 @@ class RedisConnection:
         it before sending
         """
         if self._secure is False:
-            self._rb.send_data(data)
+            self._backend.send_data(data)
         else:
-            self._rb.send_signed(data)
+            self._backend.send_signed(data)
 
     def send_result(self, result):
         if self._secure is False:
-            self._rb.send_result_data(result)
+            self._backend.send_result_data(result)
         else:
-            self._rb.send_result_signed(result)
+            self._backend.send_result_signed(result)
 
     def recv(self, timeout=None, unpickle=True):
         """Receive data from the PULL socket, if a secure flag is set it checks
         for integrity of the received data
         """
         if self._secure is False:
-            return self._rb.recv_data(timeout, unpickle)
-        return self._rb.recv_signed(timeout, unpickle)
+            return self._backend.recv_data(timeout, unpickle)
+        return self._backend.recv_signed(timeout, unpickle)
 
     def recv_result(self, timeout=None, unpickle=True):
         if self._secure is False:
-            return self._rb.recv_result_data(timeout, unpickle)
-        return self._rb.recv_result_signed(timeout, unpickle)
-
-    def close():
-        self._rb.close()
-
-
-class RabbitMQConnection:
-
-    def __init__(self, host, port, role, name,
-                 namespace='queue', secure=False):
-        self._rb = RabbitMQSocket(host, port, role, name, namespace)
-        self._secure = secure
-
-    def send(self, data):
-        """Send data through the PUSH socket, if a secure flag is set it sign
-        it before sending
-        """
-        if self._secure is False:
-            self._rb.send_data(data)
-        else:
-            self._rb.send_signed(data)
-
-    def send_result(self, result):
-        if self._secure is False:
-            self._rb.send_result_data(result)
-        else:
-            self._rb.send_result_signed(result)
-
-    def recv(self, timeout=None, unpickle=True):
-        """Receive data from the PULL socket, if a secure flag is set it checks
-        for integrity of the received data
-        """
-        if self._secure is False:
-            return self._rb.recv_data(timeout, unpickle)
-        return self._rb.recv_signed(timeout, unpickle)
-
-    def recv_result(self, timeout=None, unpickle=True):
-        if self._secure is False:
-            return self._rb.recv_result_data(timeout, unpickle)
-        return self._rb.recv_result_signed(timeout, unpickle)
+            return self._backend.recv_result_data(timeout, unpickle)
+        return self._backend.recv_result_signed(timeout, unpickle)
 
     def close(self):
-        self._rb.close()
+        self._backend.close()
 
 
 class ConnectionFactory:
 
-    """Abstract Factory class, expose static methods to create the correct
-    class
+    """Poor Factory class, expose static methods to create the correct
+    class, nothing more
     """
 
     @staticmethod
@@ -361,10 +324,15 @@ class ConnectionFactory:
     @staticmethod
     def make_redis_client(host, port, db, name,
                           namespace='queue', secure=False):
-        return RedisConnection(host, port, db, name, namespace, secure=secure)
+        return BackendConnection(
+            BackendSocket(RedisBroker(host, port, db, name, namespace)),
+            secure=secure
+        )
 
     @staticmethod
     def make_rabbitmq_client(host, port, role, name,
                              namespace='queue', secure=False):
-        return RabbitMQConnection(host, port, role, name,
-                                  namespace, secure=secure)
+        return BackendConnection(
+            BackendSocket(RabbitMQBackend(host, port, role, name, namespace)),
+            secure=secure
+        )

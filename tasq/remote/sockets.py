@@ -56,7 +56,9 @@ def sign(sharedkey: str, pickled_data: bytes) -> bytes:
     return digest
 
 
-def verifyhmac(sharedkey: str, recvd_digest: bytes, pickled_data: bytes) -> None:
+def verifyhmac(sharedkey: str,
+               recvd_digest: bytes,
+               pickled_data: bytes) -> None:
     """Verify the signed pickled data is valid and no changing were made,
     otherwise raise and exception
     """
@@ -167,13 +169,16 @@ class AsyncCloudPickleContext(Context):
     _socket_class = AsyncCloudPickleSocket
 
 
-class RedisBrokerSocket(RedisBroker):
+class BackendSocket:
+
+    def __init__(self, backend):
+        self._backend = backend
 
     def send_data(self, data):
         """Serialize `data` with cloudpickle and compress it before sending
         through the socket"""
         zipped_data = pickle_and_compress(data)
-        return self.put_job(zipped_data)
+        return self._backend.put_job(zipped_data)
 
     def send_signed(self, data):
         """Serialize `data` with cloudpickle and compress it, after that, sign
@@ -182,23 +187,23 @@ class RedisBrokerSocket(RedisBroker):
         signed = sign(conf['sharedkey'].encode(), zipped_data)
         frame = struct.pack(f'!H{len(signed)}s{len(zipped_data)}s',
                             len(signed), signed, zipped_data)
-        return self.put_job(frame)
+        return self._backend.put_job(frame)
 
     def send_result_data(self, result):
         zipped_result = pickle_and_compress(result)
-        return self.put_result(zipped_result)
+        return self._backend.put_result(zipped_result)
 
     def send_result_signed(self, result):
         zipped_result = pickle_and_compress(result)
         signed = sign(conf['sharedkey'].encode(), zipped_result)
         frame = struct.pack(f'!H{len(signed)}s{len(zipped_result)}s',
                             len(signed), signed, zipped_result)
-        return self.put_result(frame)
+        return self._backend.put_result(frame)
 
     def recv_data(self, timeout=None, unpickle=True):
         """Receive data from the socket, deserialize and decompress it with
         cloudpickle"""
-        zipped_data = self.get_next_job(timeout)
+        zipped_data = self._backend.get_next_job(timeout)
         if unpickle:
             return decompress_and_unpickle(zipped_data)
         return zipped_data
@@ -209,7 +214,7 @@ class RedisBrokerSocket(RedisBroker):
         to verify the integrity of data and the that the sender is allowed to
         talk to us, deserialize and decompress it with cloudpickle
         """
-        payload = self.get_next_job(timeout)
+        payload = self._backend.get_next_job(timeout)
         sign_len = struct.unpack('!H', payload[:2])
         recv_digest, pickled_data = struct.unpack(
             f'!{sign_len[0]}s{len(payload) - sign_len[0] - 2}s',
@@ -227,7 +232,7 @@ class RedisBrokerSocket(RedisBroker):
             return pickled_data
 
     def recv_result_data(self, timeout=None, unpickle=True):
-        zipped_result = self.get_available_result(timeout)
+        zipped_result = self._backend.get_available_result(timeout)
         if unpickle:
             return decompress_and_unpickle(zipped_result)
         return zipped_result
@@ -238,98 +243,7 @@ class RedisBrokerSocket(RedisBroker):
         to verify the integrity of data and the that the sender is allowed to
         talk to us, deserialize and decompress it with cloudpickle
         """
-        payload = self.get_available_result(timeout)
-        sign_len = struct.unpack('!H', payload[:2])
-        recv_digest, pickled_data = struct.unpack(
-            f'!{sign_len[0]}s{len(payload) - sign_len[0] - 2}s',
-            payload[2:]
-        )
-        # recv_digest, pickled_data = payload
-        try:
-            verifyhmac(conf['sharedkey'].encode(), recv_digest, pickled_data)
-        except InvalidSignature:
-            # TODO log here
-            raise
-        else:
-            if unpickle:
-                return decompress_and_unpickle(pickled_data)
-            return pickled_data
-
-
-class RabbitMQSocket(RabbitMQBackend):
-
-    def send_data(self, data):
-        """Serialize `data` with cloudpickle and compress it before sending
-        through the socket"""
-        zipped_data = pickle_and_compress(data)
-        return self.put_job(zipped_data)
-
-    def send_signed(self, data):
-        """Serialize `data` with cloudpickle and compress it, after that, sign
-        the generated payload and send it through the socket"""
-        zipped_data = pickle_and_compress(data)
-        signed = sign(conf['sharedkey'].encode(), zipped_data)
-        frame = struct.pack(f'!H{len(signed)}s{len(zipped_data)}s',
-                            len(signed), signed, zipped_data)
-        return self.put_job(frame)
-
-    def send_result_data(self, result):
-        zipped_result = pickle_and_compress(result)
-        return self.put_result(zipped_result)
-
-    def send_result_signed(self, result):
-        zipped_result = pickle_and_compress(result)
-        signed = sign(conf['sharedkey'].encode(), zipped_result)
-        frame = struct.pack(f'!H{len(signed)}s{len(zipped_result)}s',
-                            len(signed), signed, zipped_result)
-        return self.put_result(frame)
-
-    def recv_data(self, timeout=None, unpickle=True):
-        """Receive data from the socket, deserialize and decompress it with
-        cloudpickle"""
-        print("Polling")
-        zipped_data = self.get_next_job()
-        print("Polled")
-        if unpickle:
-            return decompress_and_unpickle(zipped_data)
-        return zipped_data
-
-    def recv_signed(self, timeout=None, unpickle=True):
-        """
-        Receive data from the socket, check the digital signature in order
-        to verify the integrity of data and the that the sender is allowed to
-        talk to us, deserialize and decompress it with cloudpickle
-        """
-        payload = self.get_next_job()
-        sign_len = struct.unpack('!H', payload[:2])
-        recv_digest, pickled_data = struct.unpack(
-            f'!{sign_len[0]}s{len(payload) - sign_len[0] - 2}s',
-            payload[2:]
-        )
-        # recv_digest, pickled_data = payload
-        try:
-            verifyhmac(conf['sharedkey'].encode(), recv_digest, pickled_data)
-        except InvalidSignature:
-            # TODO log here
-            raise
-        else:
-            if unpickle:
-                return decompress_and_unpickle(pickled_data)
-            return pickled_data
-
-    def recv_result_data(self, timeout=None, unpickle=True):
-        zipped_result = self.get_available_result()
-        if unpickle:
-            return decompress_and_unpickle(zipped_result)
-        return zipped_result
-
-    def recv_result_signed(self, timeout=None, unpickle=True):
-        """
-        Receive data from the socket, check the digital signature in order
-        to verify the integrity of data and the that the sender is allowed to
-        talk to us, deserialize and decompress it with cloudpickle
-        """
-        payload = self.get_available_result()
+        payload = self._backend.get_available_result(timeout)
         sign_len = struct.unpack('!H', payload[:2])
         recv_digest, pickled_data = struct.unpack(
             f'!{sign_len[0]}s{len(payload) - sign_len[0] - 2}s',

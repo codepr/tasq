@@ -34,28 +34,28 @@ def get_parser():
 
 
 def start_worker(host, port, sign_data, unix_socket, worker_type):
-    from tasq.remote.master import ZMQActorMaster, ZMQQueueMaster
+    from tasq.remote.supervisor import ZMQActorSupervisor, ZMQQueueSupervisor
     if worker_type == WorkerType.ActorWorker:
-        master = ZMQActorMaster(host, port, port + 1,
+        supervisor = ZMQActorSupervisor(host, port, port + 1,
                                 sign_data=sign_data, unix_socket=unix_socket)
     elif worker_type == WorkerType.ThreadWorker:
-        master = ZMQQueueMaster(host, port, port + 1, worker_class=ThreadQueueWorker,
+        supervisor = ZMQQueueSupervisor(host, port, port + 1, worker_class=ThreadQueueWorker,
                                 sign_data=sign_data, unix_socket=unix_socket)
     else:
-        master = ZMQQueueMaster(host, port, port + 1,
+        supervisor = ZMQQueueSupervisor(host, port, port + 1,
                                 sign_data=sign_data, unix_socket=unix_socket)
-    master.serve_forever()
+    supervisor.serve_forever()
 
 
 def start_workers(workers, sign_data, unix_socket):
-    from tasq.remote.master import Masters
-    masters = Masters(workers, sign_data=sign_data, unix_socket=unix_socket)
-    masters.start_procs()
+    from tasq.remote.supervisor import Supervisors
+    supervisors = Supervisors(workers, sign_data=sign_data, unix_socket=unix_socket)
+    supervisors.start_procs()
 
 
 def start_random_workers(host, num_workers, sign_data, unix_socket):
     import random
-    from tasq.remote.master import Masters
+    from tasq.remote.supervisor import Supervisors
     workers_set = set()
     init_port = 9000
     while True:
@@ -66,8 +66,8 @@ def start_random_workers(host, num_workers, sign_data, unix_socket):
         if len(workers_set) == num_workers:
             break
         init_port = port + 2
-    masters = Masters(list(workers_set), sign_data=sign_data, unix_socket=unix_socket)
-    masters.start_procs()
+    supervisors = Supervisors(list(workers_set), sign_data=sign_data, unix_socket=unix_socket)
+    supervisors.start_procs()
 
 
 def _translate_peers(workers):

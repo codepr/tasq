@@ -38,13 +38,13 @@ class BaseTasqClient(metaclass=ABCMeta):
     """
 
     def __init__(self, host, port, sign_data=False):
-        # Host address of a remote master to connect to
+        # Host address of a remote supervisor to connect to
         self._host = host
         # Port for push side (outgoing) of the communication channel
         self._port = port
         # Send digital signed data
         self._sign_data = sign_data
-        # Client reference, set up the communication with a Master
+        # Client reference, set up the communication with a Supervisor
         self._client = self._make_client()
         # Connection flag
         self._is_connected = False

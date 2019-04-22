@@ -64,11 +64,14 @@ class RedisBroker:
 
         def get_and_push(self, block=True, timeout=None):
             """Get the tail of the queue, push into the head of the work queue
-            and return it in a single atomically transaction"""
+            and return it in a single atomically transaction
+            """
             if block:
-                item = self._db.brpoplpush(self._queue_name, self._work_queue_name)
+                item = self._db.brpoplpush(self._queue_name,
+                                           self._work_queue_name)
             else:
-                item = self._db.rpoplpush(self._queue_name, self._work_queue_name)
+                item = self._db.rpoplpush(self._queue_name,
+                                          self._work_queue_name)
 
             return item
 
@@ -82,7 +85,8 @@ class RedisBroker:
     def __init__(self, host, port, db, name, namespace='queue'):
 
         self._rq = self.RedisQueue(name, host, port, db, namespace)
-        self._rq_res = self.RedisQueue(f'{name}:result', host, port, db, namespace)
+        self._rq_res = self.RedisQueue(f'{name}:result', host,
+                                       port, db, namespace)
 
     def put_job(self, serialized_job):
         self._rq.put(serialized_job)
