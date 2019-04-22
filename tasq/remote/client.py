@@ -126,25 +126,31 @@ class BaseTasqClient(metaclass=ABCMeta):
             self.disconnect()
         self._client.close()
 
+    def pending_jobs(self):
+        """Returns the pending jobs"""
+        return self._pending
+
     def pending_results(self):
         """Retrieve pending jobs from the results dictionary"""
         return {k: v for k, v in self._results.items() if v.done() is False}
 
-    def schedule(self, runnable, *args, **kwargs):
+    def schedule(self, func, *args, **kwargs):
         """Schedule a job to a remote worker, without blocking. Require a
-        runnable task, and arguments to be passed with, cloudpickle will handle
+        func task, and arguments to be passed with, cloudpickle will handle
         dependencies shipping. Optional it is possible to give a name to the
         job, otherwise a UUID will be defined
 
         Args:
         -----
-        :type runnable: func
-        :param runnable: A function to be executed on a worker by enqueing it
+        :type func: func
+        :param func: A function to be executed on a worker by enqueing it
 
-        :return: A future eventually containing the result of the func execution
+        :rtype: concurrent.futures.Future
+        :return: A future eventually containing the result of the func
+                 execution
         """
         name = kwargs.pop('name', u'')
-        job = Job(name, runnable, *args, **kwargs)
+        job = Job(name, func, *args, **kwargs)
         # If not connected enqueue for execution at the first connection
         if not self.is_connected:
             self._log.debug("Client not connected, appending job to pending queue.")
@@ -158,23 +164,23 @@ class BaseTasqClient(metaclass=ABCMeta):
         self._client.send(job)
         return future
 
-    def schedule_blocking(self, runnable, *args, **kwargs):
+    def schedule_blocking(self, func, *args, **kwargs):
         """Schedule a job to a remote worker wating for the result to be ready.
-        Like `schedule` it require a runnable task, and arguments to be passed
+        Like `schedule` it require a func task, and arguments to be passed
         with, cloudpickle will handle dependencies shipping. Optional it is
         possible to give a name to the job, otherwise a UUID will be defined
 
         Args:
         -----
-        :type runnable: func
-        :param runnable: A function to be executed on a worker by enqueing it
+        :type func: func
+        :param func: A function to be executed on a worker by enqueing it
 
         :return: The result of the func execution
         """
         if not self.is_connected:
             raise TasqClientNotConnected('Client not connected to no worker')
         timeout = kwargs.pop('timeout', None)
-        future = self.schedule(runnable, *args, **kwargs)
+        future = self.schedule(func, *args, **kwargs)
         result = future.result(timeout)
         return result
 
@@ -217,11 +223,18 @@ class ZMQTasqClient(BaseTasqClient):
             try:
                 job_result = self._client.recv()
             except (zmq.error.ContextTerminated, zmq.error.ZMQError):
+                self._log.warning("ZMQ error while receiving results back")
                 pass
-            if not job_result.value and job_result.exc:
-                self._results[job_result.name].set_result(job_result.exc)
-            else:
-                self._results[job_result.name].set_result(job_result.value)
+            if not job_result:
+                continue
+            self._log.debug("Gathered result: %s", job_result)
+            try:
+                if not job_result.value and job_result.exc:
+                    self._results[job_result.name].set_result(job_result.exc)
+                else:
+                    self._results[job_result.name].set_result(job_result.value)
+            except KeyError:
+                self._log.error("Can't update result: key not found")
 
 
 class RedisTasqClient(BaseTasqClient):
@@ -253,10 +266,19 @@ class RedisTasqClient(BaseTasqClient):
         """
         while True:
             job_result = self._client.recv_result()
-            if not job_result.value and job_result.exc:
-                self._results[job_result.name].set_result(job_result.exc)
-            else:
-                self._results[job_result.name].set_result(job_result.value)
+            if not job_result:
+                continue
+            self._log.debug("Gathered result: %s", job_result)
+            try:
+                if not job_result.value and job_result.exc:
+                    self._results[job_result.name].set_result(job_result.exc)
+                else:
+                    self._results[job_result.name].set_result(job_result.value)
+            except KeyError:
+                self._log.error("Can't update result: key not found")
+
+    def pending_jobs(self):
+        return self._client.get_pending_jobs()
 
     def connect(self):
         """Connect to the remote workers, setting up PUSH and PULL channels,
@@ -291,8 +313,8 @@ class RabbitMQTasqClient(BaseTasqClient):
 
     def __repr__(self):
         status = 'connected' if self.is_connected else 'disconnected'
-        return f"<RabbitMQTasqClient worker=(rabbitmq://{self.host}:{self.port}, " \
-               f"rabbitmq://{self.host}:{self.port}) status={status}>"
+        return f"<RabbitMQTasqClient worker=(amqp://{self.host}:{self.port}, " \
+               f"amqp://{self.host}:{self.port}) status={status}>"
 
     def _make_client(self):
         return ConnectionFactory \
@@ -305,10 +327,14 @@ class RabbitMQTasqClient(BaseTasqClient):
         """
         while True:
             job_result = self._client.recv_result()
-            if not job_result.value and job_result.exc:
-                self._results[job_result.name].set_result(job_result.exc)
-            else:
-                self._results[job_result.name].set_result(job_result.value)
+            self._log.debug("Gathered result: %s", job_result)
+            try:
+                if not job_result.value and job_result.exc:
+                    self._results[job_result.name].set_result(job_result.exc)
+                else:
+                    self._results[job_result.name].set_result(job_result.value)
+            except KeyError:
+                self._log.error("Can't update result: key not found")
 
     def connect(self):
         """Connect to the remote workers, setting up PUSH and PULL channels,
@@ -331,7 +357,8 @@ class RabbitMQTasqClient(BaseTasqClient):
 
 class TasqClientPool:
 
-    """Basic client pool, defining methods to talk to multiple remote workers"""
+    """Basic client pool, defining methods to talk to multiple remote
+    workers"""
 
     # TODO WIP - still a rudimentary implementation
 
@@ -365,7 +392,8 @@ class TasqClientPool:
     @property
     def results(self):
         """Lazily check for new results and add them to the list of
-        dictionaries before returning it"""
+        dictionaries before returning it
+        """
         return self._results
 
     def __iter__(self):
@@ -380,7 +408,8 @@ class TasqClientPool:
     def map(self, func, iterable):
         """Schedule a list of jobs represented by `iterable` in a round-robin
         manner. Can be seen as equivalent as schedule with `RoundRobinRouter`
-        routing."""
+        routing.
+        """
         idx = 0
         for args, kwargs in iterable:
             if idx == len(self._clients) - 1:
@@ -390,21 +419,23 @@ class TasqClientPool:
                 self._clients[idx].connect()
             self._clients[idx].schedule(func, *args, **kwargs)
 
-    def schedule(self, runnable, *args, **kwargs):
+    def schedule(self, func, *args, **kwargs):
         """Schedule a job to a remote worker, without blocking. Require a
-        runnable task, and arguments to be passed with, cloudpickle will handle
+        func task, and arguments to be passed with, cloudpickle will handle
         dependencies shipping. Optional it is possible to give a name to the
-        job, otherwise a UUID will be defined"""
+        job, otherwise a UUID will be defined
+        """
         name = kwargs.pop('name', u'')
-        job = Job(name, runnable, *args, **kwargs)
+        job = Job(name, func, *args, **kwargs)
         future = self._workers.route(job)
         self._results[job.job_id] = future
         return future
 
-    def schedule_blocking(self, runnable, *args, **kwargs):
+    def schedule_blocking(self, func, *args, **kwargs):
         """Schedule a job to a remote worker, awaiting for it to finish its
-        execution."""
+        execution.
+        """
         timeout = kwargs.pop('timeout', None)
-        future = self.schedule(runnable, *args, **kwargs)
+        future = self.schedule(func, *args, **kwargs)
         result = future.result(timeout)
         return result

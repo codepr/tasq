@@ -1,10 +1,12 @@
 Tasq
 ====
 
-Very simple broker-less distributed Task queue that allow the scheduling of job functions to be
+Very simple distributed Task queue that allow the scheduling of job functions to be
 executed on local or remote workers. Can be seen as a Proof of Concept leveraging ZMQ sockets and
 cloudpickle serialization capabilities as well as a very basic actor system to handle different
 loads of work from connecting clients.
+
+Currently Tasq supports a brokerless approach through ZMQ sockets or Redis/RabbitMQ as backends.
 
 The main advantage of using a brokerless task queue, beside latencies is the possibility of launch
 and forget some workers on a network and schedule jobs to them without having them to know nothing
@@ -12,6 +14,9 @@ about the code that they will run, allowing to define tasks dinamically, without
 workers. Obviously this approach open up more risks of malicious code to be injected to the workers,
 currently the only security measure is to sign serialized data passed to workers, but the entire
 system is meant to be used in a safe environment.
+
+**NOTE:** The project is still in development stage and it's not advisable to try it in
+production enviroments.
 
 
 
@@ -26,6 +31,33 @@ Response actor started
 ```
 
 In a python shell
+
+**Using a queue object**
+
+```
+Python 3.7.3 (default, Mar 26 2019, 21:43:19)
+Type 'copyright', 'credits' or 'license' for more information
+IPython 7.4.0 -- An enhanced Interactive Python. Type '?' for help.
+Warning: disable autoreload in ipython_config.py to improve performance.
+
+In [1]: from tasq.queue import TasqQueue
+
+In [2]: tq = TasqQueue(backend='redis://localhost:6379/0?name=test')
+
+In [3]: def dup(n):
+   ...:     return n * 2
+   ...:
+
+In [4]: fut = tq.put(dup, 5, name='task-01')
+
+In [5]: fut
+Out[5]: <Future at 0x7f0f951380f0 state=finished returned int>
+
+In [6]: fut.result()
+Out[6]: 10
+```
+
+**Lower-level TasqClient**
 
 ```
 Python 3.6.5 (default, Apr 12 2018, 22:45:43)

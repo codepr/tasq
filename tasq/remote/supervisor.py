@@ -30,6 +30,30 @@ def max_workers():
 
 class BaseSupervisor(metaclass=ABCMeta):
 
+    """Interface for a generic Supervisor, define the basic traits of
+    Supervisor process, a class in charge of intermediation between clients
+    and workers, being them ThreadQueue, ProcessQueue or Actors.
+
+    Attributes
+    ----------
+    :type host: str
+    :param host: The address to bind a listening socket to
+
+    :type port: int or 9000
+    :param port: The port associated to the address to listen for incoming
+                 client connections
+
+    :type num_workers: int or max_workers()
+    :param num_workers: The number of workers to spawn on the node (e.g.
+                        machine where the Supervisor is started), fallback to
+                        a maximum defined by the (nr. of core x 2) + 1
+
+    :type sign_data: bool or False
+    :param sign_data: A boolean controlling wether the serialized jobs should
+                      be salted and signed or just plain bytearrays.
+
+    """
+
     def __init__(self, host, port=9000,
                  num_workers=max_workers(), sign_data=False):
         # Host address to bind sockets to
@@ -73,8 +97,7 @@ class BaseSupervisor(metaclass=ABCMeta):
 
 class ZMQSupervisor(BaseSupervisor, metaclass=ABCMeta):
 
-    """
-    Supervisor process, handle requests asynchronously from clients and
+    """Supervisor process, handle requests asynchronously from clients and
     delegate processing of incoming tasks to worker actors, responses are sent
     back to clients by using a pool of actors as well
     """
@@ -90,9 +113,6 @@ class ZMQSupervisor(BaseSupervisor, metaclass=ABCMeta):
         # push and pull channel
         self._unix_socket = unix_socket
         super().__init__(host, num_workers=num_workers, sign_data=sign_data)
-        # ZMQ poller settings for async recv
-        self._poller = zmq.asyncio.Poller()
-        self._poller.register(self._server.pull_socket, zmq.POLLIN)
         # Event loop
         self._loop = asyncio.get_event_loop()
         # Handling loop exit
@@ -151,8 +171,7 @@ class ZMQSupervisor(BaseSupervisor, metaclass=ABCMeta):
 
 class ZMQActorSupervisor(ZMQSupervisor):
 
-    """
-    Supervisor process, handle requests asynchronously from clients and
+    """Supervisor process, handle requests asynchronously from clients and
     delegate processing of incoming tasks to worker actors, responses are sent
     back to clients by using a pool of actors as well
     """
@@ -186,8 +205,7 @@ class ZMQActorSupervisor(ZMQSupervisor):
     async def _start(self):
         """Receive jobs from clients with polling"""
         while True:
-            events = await self._poller.poll()
-            if self._server._pull_socket in dict(events):
+            if await self._server.poll():
                 job = await self._server.recv()
                 res = self._workers.route(job)
                 self._responses.route(res)
@@ -195,8 +213,7 @@ class ZMQActorSupervisor(ZMQSupervisor):
 
 class ZMQQueueSupervisor(ZMQSupervisor):
 
-    """
-    Supervisor process, handle requests asynchronously from clients and
+    """Supervisor process, handle requests asynchronously from clients and
     delegate processing of incoming tasks to worker processes, responses are
     sent back to clients by using a dedicated thread
     """
@@ -232,8 +249,7 @@ class ZMQQueueSupervisor(ZMQSupervisor):
         """Receive jobs from clients with polling"""
         unpickle = False
         while True:
-            events = await self._poller.poll()
-            if self._server._pull_socket in dict(events):
+            if await self._server.poll():
                 pickled_job = await self._server.recv(unpickle=unpickle)
                 self._jobqueue.add_job(pickled_job)
 
@@ -380,7 +396,7 @@ class Supervisors:
 
     """Class to handle a pool of supervisors on the same node"""
 
-    def __init__(self, binds, sign_data=False, unix_socket=False, debug=False):
+    def __init__(self, binds, sign_data=False, unix_socket=False):
         # List of tuples (host, pport, plport) to bind to
         self._binds = binds
         # Digital sign data before send an receive it
@@ -389,8 +405,6 @@ class Supervisors:
         # communication will be used and ports will be used to differentiate
         # push and pull channel
         self._unix_socket = unix_socket
-        # Debug flag
-        self._debug = debug
         # Processes, equals the len of `binds`
         self._procs = []
         self._init_binds()

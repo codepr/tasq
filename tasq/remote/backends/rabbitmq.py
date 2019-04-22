@@ -1,6 +1,10 @@
 """
 tasq.remote.backends.rabbitmq.py
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+RabbitMQ backend connection implementation, provides a layer of abstraction
+over pika python driver in order to handle the queue in a more convenient way
+for Tasq, specifically making all transactions blocking.
 """
 
 import queue
@@ -19,7 +23,8 @@ class RabbitMQBackend:
     """Simple Queue with RabbitMQ Backend"""
 
     def __init__(self, host, port, role, name, namespace=u'queue'):
-        """The default connection parameters are: host='localhost', port=5672"""
+        """The default connection parameters are: host='localhost', port=5672
+        """
         self._host, self._port = host, port
         assert role in {'receiver', 'sender'}, f"Unknown role {role}"
         self._role = role

@@ -9,7 +9,8 @@ import inspect
 class Singleton(type):
 
     """Singleton class, just subclass this to obtain a singleton instance of an
-    object"""
+    object
+    """
 
     def __init__(cls, *args, **kwargs):
         cls._instance = None

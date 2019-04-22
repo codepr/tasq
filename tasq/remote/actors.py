@@ -14,13 +14,29 @@ from ..actors.actor import Actor, Result
 class WorkerActor(Actor):
 
     """Simple worker actor, execute a `job` and set a result with the
-    response"""
+    response
+
+    Attributes
+    ----------
+    :type name: str or ''
+    :param name: The name of the actor, this should uniquely identify it
+
+    :type ctx: actorsystem.ActorSystem or None
+    :param ctx: Context variable which can be used to spawn additional actors,
+                generally this is the ActorSystem singleton which rules the
+                entire fleet of actors.
+
+    :type response_actor: tasq.actors.actor.Actor or None
+    :param response_actor: Instance of an Actor responsible for communication
+                           with the requesting client
+
+    """
 
     def __init__(self, name=u'', ctx=None, response_actor=None):
+        super().__init__(name, ctx)
         self._response_actor = response_actor or ctx.actor_of(
             ResponseActor, f'ResponseActor - {name}'
         )
-        super().__init__(name, ctx)
 
     def submit(self, job):
         """Submits a job object to the run loop of the actor, returning
@@ -47,7 +63,8 @@ class WorkerActor(Actor):
 
     def run(self):
         """Executes pending jobs, setting the results to the associated
-        `Result` object once it is ready"""
+        `Result` object once it is ready
+        """
         while True:
             job, result = self.recv()
             self._log.debug("Received %s", job)
@@ -82,7 +99,27 @@ class WorkerActor(Actor):
 class ResponseActor(Actor):
 
     """Response actor, it's task is to answer back to the client by leveraging
-    the PUSH/PULL communication pattern offered by ZMQ sockets"""
+    the PUSH/PULL communication pattern offered by ZMQ sockets
+
+    Attributes
+    ----------
+    :type name: str or ''
+    :param name: The name of the actor, this should uniquely identify it
+
+    :type ctx: actorsystem.ActorSystem or None
+    :param ctx: Context variable which can be used to spawn additional actors,
+                generally this is the ActorSystem singleton which rules the
+                entire fleet of actors.
+
+    :type response_actor: tasq.actors.actor.Actor or None
+    :param response_actor: Instance of an Actor responsible for communication
+                           with the requesting client
+
+    :type sendfunc: function
+    "param sendfunc: The sending function, as the respond-responsible function
+                     to call to communicate results to a client
+
+    """
 
     def __init__(self, name=u'', ctx=None, *, sendfunc=None):
         self._sendfunc = sendfunc
@@ -107,8 +144,7 @@ class TimedActor(Actor):
         super().__init__(name, ctx)
 
     def submit(self, job, eta):
-        """
-        Submit a time-scheduled job, to be executed every defined interval.
+        """Submit a time-scheduled job, to be executed every defined interval.
         Eta define the interval of the repeating task, and can be specified as
         an int, meaning seconds, or as string specifying the measure unit.
 
@@ -149,7 +185,8 @@ class TimedActor(Actor):
 
     def run(self):
         """Executes pending jobs, setting the results to the associated
-        `Result` object once it is ready"""
+        `Result` object once it is ready
+        """
         while True:
             job, result = self.recv()
             self._log.debug("%s - executing timed job %s", self.name, job)
@@ -174,15 +211,26 @@ class TimedActor(Actor):
 class ClientWorker(Actor):
 
     """Simplicistic worker with responsibility to communicate job scheduling to
-    a `TasqClient` instance"""
+    a `TasqClient` instance
+
+    Attributes
+    ----------
+    :type name: str or ''
+    :param name: The name of the actor, this should uniquely identify it
+
+    :type ctx: actorsystem.ActorSystem or None
+    :param ctx: Context variable which can be used to spawn additional actors,
+                generally this is the ActorSystem singleton which rules the
+                entire fleet of actors.
+
+    """
 
     def __init__(self, client, name=u'', ctx=None):
         self._client = client
         super().__init__(name=name, ctx=ctx)
 
     def submit(self, job):
-        """
-        Create a `Future` object and enqueue it into the mailbox with the
+        """Create a `Future` object and enqueue it into the mailbox with the
         associated job, then return it to the caller
 
         Args:
@@ -200,7 +248,8 @@ class ClientWorker(Actor):
 
     def run(self):
         """Consumes all messages in the mailbox, setting each future's result
-        with the result returned by the call."""
+        with the result returned by the call.
+        """
         while True:
             job, future = self.recv()
             self._log.debug("Received %s", job)

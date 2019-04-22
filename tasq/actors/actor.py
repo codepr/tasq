@@ -10,6 +10,7 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import uuid
 from queue import Queue
 from threading import Thread, Event
+from abc import ABC, abstractmethod
 
 from ..logger import get_logger
 from .actorsystem import ActorSystem
@@ -19,12 +20,22 @@ class ActorExit(Exception):
     pass
 
 
-class Actor:
+class Actor(ABC):
 
-    """
-    Class modeling a basic erlang-style actor, a simple object which can be
+    """Class modeling a basic erlang-style actor, a simple object which can be
     used to push messages into a mailbox and process them in separate thread,
-    concurrently, without sharing any state with other actors
+    concurrently, without sharing any state with other actors.
+
+    Attributes
+    ----------
+    :type name: str or ''
+    :param name: The name of the actor, this should uniquely identify it
+
+    :type ctx: actorsystem.ActorSystem or None
+    :param ctx: Context variable which can be used to spawn additional actors,
+                generally this is the ActorSystem singleton which rules the
+                entire fleet of actors.
+
     """
 
     def __init__(self, name=u'', ctx=None):
@@ -53,13 +64,15 @@ class Actor:
 
     def send(self, msg):
         """Sends a message to the actor, effectively putting it into the
-        mailbox"""
+        mailbox
+        """
         self._mailbox.put(msg)
 
     def recv(self):
         """Poll the mailbox for pending messages, blocking if empty. In case of
         `ActorExit` message it raises an execption and shutdown the actor
-        loop"""
+        loop
+        """
         msg = self._mailbox.get()
         if msg is ActorExit:
             self._is_running = False
@@ -79,7 +92,8 @@ class Actor:
 
     def _bootstrap(self):
         """Target method to be run into a thread, call the `run` method till an
-        `ActorExit` message"""
+        `ActorExit` message
+        """
         try:
             self.run()
         except ActorExit:
@@ -91,15 +105,17 @@ class Actor:
         """Wait till the end of all messages"""
         self._terminated.wait()
 
+    @abstractmethod
     def run(self):
         """Must be implemented by subclasses"""
-        pass
+        raise NotImplementedError
 
 
 class Result:
 
     """Simple class to wrap a result for processed jobs, acts much like a
-    future object"""
+    future object
+    """
 
     def __init__(self):
         self._event = Event()

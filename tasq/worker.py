@@ -20,7 +20,18 @@ from .remote.sockets import pickle_and_compress, decompress_and_unpickle
 class Worker(metaclass=ABCMeta):
 
     """Generic worker class, contains a job queue and handle incoming jobs for
-    execution, should be mixed int with Thread or Process class"""
+    execution, should be mixed int with Thread or Process class
+
+    Attributes
+    ----------
+    :type job_queue: tasq.JobQueue
+    :param job_queue: The main job queue, consume a single job for each worker
+                      in a work-stealing way
+
+    :type name: str or ''
+    :param name: The name of the worker, a unique identifier
+
+    """
 
     def __init__(self, job_queue, completed_jobs, name=u'', *args, **kwargs):
         # Process name, defaulted to a uuid
@@ -69,7 +80,8 @@ class Worker(metaclass=ABCMeta):
 class QueueWorker(Worker):
 
     """Worker unit based on `multiprocessing.JoinableQueue`, used to pass jobs
-    to workers in a producer-consumer like way"""
+    to workers in a producer-consumer like way
+    """
 
     def run(self):
         while True:
@@ -131,7 +143,8 @@ class QueueWorker(Worker):
 class ThreadQueueWorker(QueueWorker, Thread):
 
     """Worker unit based on `threading.Thread` superclass, useful if the
-    majority of the jobs are I/O bound"""
+    majority of the jobs are I/O bound
+    """
 
     pass
 
@@ -139,6 +152,7 @@ class ThreadQueueWorker(QueueWorker, Thread):
 class ProcessQueueWorker(QueueWorker, Process):
 
     """Worker unit based on `multiprocessing.Process` superclass, meant to be
-    employed in case the majority of the jobs are CPU bound"""
+    employed in case the majority of the jobs are CPU bound
+    """
 
     pass

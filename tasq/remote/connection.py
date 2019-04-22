@@ -10,7 +10,7 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 from abc import ABCMeta, abstractmethod
 
 import zmq
-from .backends.redis import RedisBroker
+from .backends.redis import RedisBackend
 from .backends.rabbitmq import RabbitMQBackend
 from .sockets import AsyncCloudPickleContext, CloudPickleContext, BackendSocket
 
@@ -36,6 +36,7 @@ class Server(metaclass=ABCMeta):
         self._ctx = None
         self._push_socket = None
         self._pull_socket = None
+        self._poller = None
         self._make_sockets()
 
     @abstractmethod
@@ -78,6 +79,9 @@ class MixedServer(Server):
                      'async': AsyncCloudPickleContext()}
         self._push_socket = self._ctx['sync'].socket(zmq.PUSH)
         self._pull_socket = self._ctx['async'].socket(zmq.PULL)
+        # ZMQ poller settings for async recv
+        self._poller = zmq.asyncio.Poller()
+        self._poller.register(self._pull_socket, zmq.POLLIN)
 
     def stop(self):
         # Close connected sockets
@@ -95,6 +99,12 @@ class MixedServer(Server):
             self._push_socket.send_data(data, flags)
         else:
             self._push_socket.send_signed(data, flags)
+
+    async def poll(self):
+        events = await self._poller.poll()
+        if self._pull_socket in dict(events):
+            return dict(events)
+        return None
 
     async def recv(self, unpickle=True, flags=0):
         """Asynchronous receive data from the PULL socket, if a secure flag is
@@ -284,6 +294,9 @@ class BackendConnection:
             return self._backend.recv_result_data(timeout, unpickle)
         return self._backend.recv_result_signed(timeout, unpickle)
 
+    def get_pending_jobs(self):
+        return self._backend.get_pending_jobs()
+
     def close(self):
         self._backend.close()
 
@@ -325,7 +338,7 @@ class ConnectionFactory:
     def make_redis_client(host, port, db, name,
                           namespace='queue', secure=False):
         return BackendConnection(
-            BackendSocket(RedisBroker(host, port, db, name, namespace)),
+            BackendSocket(RedisBackend(host, port, db, name, namespace)),
             secure=secure
         )
 

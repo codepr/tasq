@@ -1,4 +1,9 @@
-### 1.1.5
+### 1.1.6
+(Apr 22, 2019)
+
+- Added a TasqQueue class for more convenient uses
+- Fixed some bugs
+
 (Apr 22, 2019)
 
 - Renamed `master` -> `supervisor`

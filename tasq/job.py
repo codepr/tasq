@@ -1,7 +1,8 @@
 """
 tasq.job.py
 ~~~~~~~~~~~
-Jobs related classes and functions
+Jobs related classes and functions, provides abstractions over the concept of a
+task.
 """
 
 from __future__ import absolute_import, division, print_function, unicode_literals
@@ -21,7 +22,18 @@ class JobStatus(IntEnum):
 class Job:
 
     """Simple class modeling a Job, wrapping function calls with arguments and
-    giving it an ID"""
+    giving it an ID
+
+    Attributes
+    ----------
+    :type job_id: str
+    :param job_id: The unique universal identifier of the job
+
+    :type func: function
+    :param funct: The core of the task itself, the associated with the Task
+                  that must be executed, it must be a callable
+
+    """
 
     def __init__(self, job_id, func, *args, **kwargs):
         # Assign a default uuid in case of empty name
@@ -79,7 +91,8 @@ class Job:
 
     def execution_time(self):
         """Return the time passed between the start of the execution and the
-        end of it"""
+        end of it
+        """
         try:
             return self._end_time - self._start_time
         except TypeError:
@@ -92,7 +105,8 @@ class Job:
     def execute(self):
         """Execute the function with arguments and keyword arguments, if a
         given delay is specified, this method await till the timeout expires
-        and then executes the job"""
+        and then executes the job
+        """
         if self._delay:
             time.sleep(self._delay)
             return self._execute_job()
@@ -101,9 +115,9 @@ class Job:
     def _execute_job(self):
         """Execute the function with arguments and keyword arguments"""
         self._start_time = time.time()
-        try:
+        try:  # pylint: disable=bare-except
             result = JobResult(self.job_id, self._func(*self._args, **self._kwargs))
-        except:
+        except:  # pylint: disable=bare-except
             # Failing
             self._status = JobStatus.FAILED
             result = JobResult(self.job_id, None, sys.exc_info()[0])

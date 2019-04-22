@@ -38,7 +38,8 @@ class ActorSystem(metaclass=SingletonArgs):
     def router_of(self, router_class, actor_class, num_workers,
                   func_name='submit', *args, **kwargs):
         """Return a router class type with the number and type of workers
-        specified"""
+        specified
+        """
         pool = actor_pool(num_workers, actor_class, router_class,
                           func_name, *args, **kwargs)
         self._actors.update({w.name: w for w in pool.workers})

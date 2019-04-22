@@ -12,11 +12,19 @@ from abc import ABCMeta, abstractmethod
 
 class Router(metaclass=ABCMeta):
 
-    """
-    Oversimplified router system to enroute messages to a pool of workers
+    """Oversimplified router system to enroute messages to a pool of workers
     actor, by subclassing this it is possible to add different heuristic of
     message routing. If the len of the workers pool is just 1, ignore every
     defined heuristic and send the message to that only worker.
+
+    Attributes
+    ----------
+    :type workers: int
+    :param workers: Number of workers of the pool
+
+    :type func_name: str or 'submit'
+    :param func_name: The name of the method that must be called after the
+                      message has been routed.
     """
 
     def __init__(self, workers, func_name=u'submit', *args, **kwargs):
@@ -30,7 +38,8 @@ class Router(metaclass=ABCMeta):
 
     def _call_func(self, idx, msg):
         """Check if the defined `func_name` is present in the worker positioned
-        at `idx` in the pool and call that function, passing in `msg`."""
+        at `idx` in the pool and call that function, passing in `msg`.
+        """
         if hasattr(self._workers[idx], self._func_name):
             # Lazy check for actor state
             if not self._workers[idx].is_running:
@@ -46,7 +55,8 @@ class Router(metaclass=ABCMeta):
 
     def route(self, msg):
         """Call `_route_message` private method, call function directly in case
-        of a single worker pool"""
+        of a single worker pool
+        """
         if len(self._workers) == 1:
             return self._call_func(0, msg)
         return self._route_message(msg)
@@ -62,7 +72,8 @@ class RoundRobinRouter(Router):
 
     def _route_message(self, msg):
         """Send message to the current indexed actor, if the index reach the
-        max length of the actor list, it reset it to 0"""
+        max length of the actor list, it reset it to 0
+        """
         if self._idx == len(self._workers) - 1:
             self._idx = 0
         else:
@@ -76,7 +87,8 @@ class RandomRouter(Router):
 
     def _route_message(self, msg):
         """Retrieve a random index in the workers list and send message to the
-        corresponding actor"""
+        corresponding actor
+        """
         import random
         idx = random.randint(0, len(self._workers))
         return self._call_func(idx, msg)
@@ -85,11 +97,11 @@ class RandomRouter(Router):
 class SmallestMailboxRouter(Router):
 
     """Check which worker has minor load of messages in a really naive way and
-    send the message to it"""
+    send the message to it
+    """
 
     def _route_message(self, msg):
-        """
-        Create a dictionary formed by mailbox size of each actor as key, and
+        """Create a dictionary formed by mailbox size of each actor as key, and
         the actor itself as value; by finding the minimum key in the
         dictionary, it send the message to the actor associated with.
         """
@@ -100,8 +112,7 @@ class SmallestMailboxRouter(Router):
 
 def actor_pool(num_workers, actor_class, router_class,
                func_name='submit', *args, **kwargs):
-    """
-    Return a router object by getting the definition directly from the
+    """Return a router object by getting the definition directly from the
     module, raising an exception if not found. Init the object with a
     `num_workers` actors
     """
