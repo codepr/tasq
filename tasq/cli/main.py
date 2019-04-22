@@ -30,6 +30,8 @@ def get_parser():
     parser.add_argument('--verbose', '-v', action='store_true')
     parser.add_argument('--addr', '-a', action='store')
     parser.add_argument('--port', '-p', action='store')
+    parser.add_argument('--db', action='store')
+    parser.add_argument('--name', action='store')
     return parser
 
 
@@ -44,6 +46,36 @@ def start_worker(host, port, sign_data, unix_socket, worker_type):
     else:
         supervisor = ZMQQueueSupervisor(host, port, port + 1,
                                 sign_data=sign_data, unix_socket=unix_socket)
+    supervisor.serve_forever()
+
+
+def start_redis_worker(host, port, db, name, sign_data, worker_type):
+    from tasq.remote.supervisor import RedisActorSupervisor, RedisQueueSupervisor
+    if worker_type == WorkerType.ActorWorker:
+        supervisor = RedisActorSupervisor(host, port, db,
+                                          name, sign_data=sign_data)
+    elif worker_type == WorkerType.ThreadWorker:
+        supervisor = RedisQueueSupervisor(host, port, db, name,
+                                          worker_class=ThreadQueueWorker,
+                                          sign_data=sign_data)
+    else:
+        supervisor = RedisQueueSupervisor(host, port, db, name,
+                                          sign_data=sign_data)
+    supervisor.serve_forever()
+
+
+def start_rabbitmq_worker(host, port, name, sign_data, worker_type):
+    from tasq.remote.supervisor import RabbitMQActorSupervisor, RabbitMQQueueSupervisor
+    if worker_type == WorkerType.ActorWorker:
+        supervisor = RabbitMQActorSupervisor(host, port,
+                                          name, sign_data=sign_data)
+    elif worker_type == WorkerType.ThreadWorker:
+        supervisor = RabbitMQQueueSupervisor(host, port, name,
+                                          worker_class=ThreadQueueWorker,
+                                          sign_data=sign_data)
+    else:
+        supervisor = RabbitMQQueueSupervisor(host, port, name,
+                                          sign_data=sign_data)
     supervisor.serve_forever()
 
 
@@ -118,5 +150,20 @@ def main():
         if args.port:
             port = int(args.port)
         start_worker(host, port, sign_data, unix_socket, worker_type)
+    elif args.subcommand == 'redis':
+        if args.addr:
+            host = args.addr
+        if args.port:
+            port = int(args.port)
+        db = int(args.db) or 0
+        name = args.name or 'redisqueue'
+        start_redis_worker(host, port, db, name, sign_data, worker_type)
+    elif args.subcommand == 'rabbitmq':
+        if args.addr:
+            host = args.addr
+        if args.port:
+            port = int(args.port)
+        name = args.name or 'rabbitmqqueue'
+        start_rabbitmq_worker(host, port, name, sign_data, worker_type)
     elif args.random:
         start_random_workers(host, int(args.random), sign_data, unix_socket)
