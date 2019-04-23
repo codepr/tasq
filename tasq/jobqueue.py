@@ -7,7 +7,6 @@ single node context.
 
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-from queue import Queue
 from multiprocessing import get_context
 from multiprocessing.queues import JoinableQueue
 
@@ -23,10 +22,6 @@ class JobQueue(JoinableQueue):
 
     Attributes
     ----------
-    :type completed_jobs: multiprocessing.JoinableQueue
-    :param completed_jobs: Outside job queue, employed to track completed jobs
-                           regardless their outcome
-
     :type num_workers: int or 4
     :param num_workers: The number of workers thread/proesses in charge to
                         execute incoming jobs to spawn
@@ -38,8 +33,8 @@ class JobQueue(JoinableQueue):
     :param worker_class: The worker subclass to use as the thread/process workers
     """
 
-    def __init__(self, completed_jobs, num_workers=4,
-                 start_method='fork', worker_class=ProcessQueueWorker):
+    def __init__(self, num_workers=4, start_method='fork',
+                 worker_class=ProcessQueueWorker):
         # if not isinstance(worker_class, Worker):
         #     raise Exception
         # Retrieve the spawn context for the joinable queue super class
@@ -49,7 +44,7 @@ class JobQueue(JoinableQueue):
         # Number of workers to spawn
         self._num_workers = num_workers
         # JoinableQueue to store completed jobs
-        self._completed_jobs = completed_jobs
+        self._completed_jobs = JoinableQueue(ctx=ctx)
         # Worker class, can be either Process or Thread
         self._workerclass = worker_class
         # Spin the workers
@@ -85,6 +80,12 @@ class JobQueue(JoinableQueue):
         :return: A `tasq.Job` object
         """
         return self.get(timeout)
+
+    def get_result(self, block=True, timeout=None):
+        return self._completed_jobs.get(block, timeout)
+
+    def shutdown(self):
+        self._completed_jobs.put(None)
 
     def start_workers(self):
         """Create and start all the workers"""

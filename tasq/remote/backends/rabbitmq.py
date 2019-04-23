@@ -15,8 +15,6 @@ try:
 except ImportError:
     print("You need to install pika to use rabbitmq backend")
 
-from tasq.logger import get_logger
-
 
 class RabbitMQBackend:
 

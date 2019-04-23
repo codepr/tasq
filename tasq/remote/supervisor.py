@@ -12,8 +12,7 @@ import signal
 import asyncio
 from threading import Thread, Event
 from abc import ABCMeta, abstractmethod
-from multiprocessing import Process, JoinableQueue, cpu_count
-import zmq
+from multiprocessing import Process, cpu_count
 
 from .actors import ResponseActor, WorkerActor
 from .connection import ConnectionFactory
@@ -221,13 +220,10 @@ class ZMQQueueSupervisor(ZMQSupervisor):
     def __init__(self, host, pull_port, push_port, num_workers=max_workers(),
                  worker_class=ProcessQueueWorker, sign_data=False, unix_socket=False):
         super().__init__(host, pull_port, push_port, num_workers, sign_data, unix_socket)
-        # Result queue populated by workers
-        self._completed_jobs = JoinableQueue()
         # Workers class type
         self._worker_class = worker_class
         # Job queue passed in to workers
-        self._jobqueue = JobQueue(self._completed_jobs,
-                                  num_workers=num_workers,
+        self._jobqueue = JobQueue(num_workers=num_workers,
                                   worker_class=worker_class)
         # Dedicated thread to client responses
         self._response_thread = Thread(target=self._respond, daemon=True)
@@ -239,7 +235,7 @@ class ZMQQueueSupervisor(ZMQSupervisor):
         the completed_jobs queue
         """
         while True:
-            response = self._completed_jobs.get()
+            response = self._jobqueue.get_result()
             # Poison pill check
             if response is None:
                 break
@@ -257,7 +253,7 @@ class ZMQQueueSupervisor(ZMQSupervisor):
         """Stops the running response threads and the pool of processes"""
         super().stop()
         # Use a poison pill to stop the loop
-        self._completed_jobs.put(None)
+        self._jobqueue.shutdown()
         self._response_thread.join()
 
     def serve_forever(self):
@@ -281,13 +277,10 @@ class RedisQueueSupervisor(BaseSupervisor):
         self._db = db
         self._name = name
         super().__init__(host, port, num_workers, sign_data)
-        # Result queue populated by workers
-        self._completed_jobs = JoinableQueue()
         # Workers class type
         self._worker_class = worker_class
         # Job queue passed in to workers
-        self._jobqueue = JobQueue(self._completed_jobs,
-                                  num_workers=num_workers,
+        self._jobqueue = JobQueue(num_workers=num_workers,
                                   worker_class=worker_class)
         # Dedicated thread to client responses
         self._response_thread = Thread(target=self._respond, daemon=True)
@@ -311,7 +304,7 @@ class RedisQueueSupervisor(BaseSupervisor):
         self._run = False
         self._done.wait()
         # Use a poison pill to stop the loop
-        self._completed_jobs.put(None)
+        self._jobqueue.shutdown()
         self._response_thread.join()
 
     def serve_forever(self):
@@ -324,13 +317,12 @@ class RedisQueueSupervisor(BaseSupervisor):
             self._jobqueue.add_job(job)
         self._done.set()
 
-
     def _respond(self):
         """Spin a loop and respond to client with whatever results arrive in
         the completed_jobs queue
         """
         while True:
-            response = self._completed_jobs.get()
+            response = self._jobqueue.get_result()
             # Poison pill check
             if response is None:
                 break
@@ -408,13 +400,10 @@ class RabbitMQQueueSupervisor(BaseSupervisor):
                  worker_class=ProcessQueueWorker, sign_data=False):
         self._name = name
         super().__init__(host, port, num_workers, sign_data)
-        # Result queue populated by workers
-        self._completed_jobs = JoinableQueue()
         # Workers class type
         self._worker_class = worker_class
         # Job queue passed in to workers
-        self._jobqueue = JobQueue(self._completed_jobs,
-                                  num_workers=num_workers,
+        self._jobqueue = JobQueue(num_workers=num_workers,
                                   worker_class=worker_class)
         # Dedicated thread to client responses
         self._response_thread = Thread(target=self._respond, daemon=True)
@@ -437,8 +426,7 @@ class RabbitMQQueueSupervisor(BaseSupervisor):
         self._log.info("\nStopping..")
         self._run = False
         self._done.wait()
-        # Use a poison pill to stop the loop
-        self._completed_jobs.put(None)
+        self._jobqueue.shutdown()
         self._response_thread.join()
 
     def serve_forever(self):
@@ -451,13 +439,12 @@ class RabbitMQQueueSupervisor(BaseSupervisor):
             self._jobqueue.add_job(job)
         self._done.set()
 
-
     def _respond(self):
         """Spin a loop and respond to client with whatever results arrive in
         the completed_jobs queue
         """
         while True:
-            response = self._completed_jobs.get()
+            response = self._jobqueue.get_result()
             # Poison pill check
             if response is None:
                 break
@@ -543,7 +530,7 @@ class Supervisors:
 
     def _serve_supervisor(self, host, psh_port, pl_port):
         m = ZMQActorSupervisor(host, psh_port, pl_port, sign_data=self._sign_data,
-                           unix_socket=self._unix_socket)
+                               unix_socket=self._unix_socket)
         m.serve_forever()
 
     def _init_binds(self):

@@ -6,8 +6,37 @@ The main client module, provides interfaces to instantiate queues
 
 import os
 from urllib.parse import urlparse
+from collections import namedtuple
 from tasq.remote.backends.redis import RedisStore
 from tasq.remote.client import ZMQTasqClient, RedisTasqClient, RabbitMQTasqClient
+
+
+def init_client(client, host, port, *args, **kwargs):
+    return client(host, port, *args, **kwargs)
+
+
+Client = namedtuple('Client', ('handler', 'arguments'))
+
+
+defaults = {
+    'redis': Client(RedisTasqClient, {'host': '127.0.0.1',
+                                      'port': 6379,
+                                      'db': 0,
+                                      'name': os.getpid()}),
+    'amqp': Client(RabbitMQTasqClient, {'host': '127.0.0.1',
+                                        'port': 5672,
+                                        'name': os.getpid()}),
+    'unix': Client(ZMQTasqClient, {'host': '127.0.0.1',
+                                   'port': 9000,
+                                   'pull_port': 9001,
+                                   'unix_socket': True}),
+    'zmq': Client(ZMQTasqClient, {'host': '127.0.0.1',
+                                  'port': 9000,
+                                  'pull_port': 9001}),
+    'tcp': Client(ZMQTasqClient, {'host': '127.0.0.1',
+                                  'port': 9000,
+                                  'pull_port': 9001})
+}
 
 
 class TasqQueue:
@@ -42,42 +71,30 @@ class TasqQueue:
     def __init__(self, backend=u'zmq://localhost:9000',
                  store=None, sign_data=False):
 
-        def get_client(protocol, host=None, port=None, *args, **kwargs):
-            if protocol == 'redis':
-                return RedisTasqClient(host or 'localhost',
-                                       port or 6379,
-                                       *args, **kwargs)
-            if protocol == 'amqp':
-                return RabbitMQTasqClient(host or 'localhost',
-                                          port or 5672,
-                                          *args, **kwargs)
-            if protocol == 'unix':
-                return ZMQTasqClient(host or 'localhost',
-                                     port or 9000,
-                                     unix_socket=True,
-                                     *args, *kwargs)
-            return ZMQTasqClient(host or 'localhost',
-                                 port or 9000,
-                                 *args, **kwargs)
-
         url = urlparse(backend)
         assert url.scheme in {'redis', 'zmq', 'amqp', 'unix', 'tcp'}, \
             f"Unsupported {url.scheme}"
-        scheme, addr, port = url.scheme, url.hostname, url.port
-        if scheme == 'redis':
-            db = int(url.path.split('/')[-1]) if url.path else 0
-            name = url.query.split('=')[-1] if url.query else f'{os.getpid()}'
-            self._backend = get_client(scheme, addr,
-                                       port, db=db,
-                                       name=name, sign_data=sign_data)
-        elif scheme == 'amqp':
-            name = url.query.split('=')[-1] if url.query else f'{os.getpid()}'
-            self._backend = get_client(scheme, addr, port,
-                                       name=name, sign_data=sign_data)
-        else:
-            pull_port = int(url.query.split('=')[-1]) if url.query else None
-            self._backend = get_client(scheme, addr, port,
-                                       plport=pull_port, sign_data=sign_data)
+        scheme = url.scheme or 'zmq'
+        args = {
+            'host': url.hostname,
+            'port': url.port,
+            'db': int(url.path.split('/')[-1]) if url.path else None,
+            'name': url.query.split('=')[-1] if url.query else None,
+            'pull_port': int(url.query.split('=')[-1]) if url.query and scheme == 'zmq' else None,
+            'sign_data': sign_data
+        }
+
+        print(args)
+
+        # Update defaults arguments
+        for k in defaults[scheme].arguments:
+            if k not in args or not args[k]:
+                args[k] = defaults[scheme].arguments[k]
+
+        # Remove useless args
+        args = {k: v for k, v in args.items() if v is not None}
+
+        self._backend = defaults[scheme].handler(**args)
 
         if store:
             urlstore = urlparse(store)
