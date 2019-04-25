@@ -1,3 +1,10 @@
+### 1.1.7
+(Apr 26, 2019)
+
+- Moved factory logic for client creation to from_url method on client module
+- Added TasqFuture result from clients result, to return more structured results
+  with additional informations about execution.
+
 ### 1.1.6
 (Apr 22, 2019)
 

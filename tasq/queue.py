@@ -18,27 +18,12 @@ def init_client(client, host, port, *args, **kwargs):
     return client(host, port, *args, **kwargs)
 
 
-Client = namedtuple('Client', ('handler', 'arguments'))
-
-
-defaults = {
-    'redis': Client(RedisTasqClient, {'host': '127.0.0.1',
-                                      'port': 6379,
-                                      'db': 0,
-                                      'name': os.getpid()}),
-    'amqp': Client(RabbitMQTasqClient, {'host': '127.0.0.1',
-                                        'port': 5672,
-                                        'name': os.getpid()}),
-    'unix': Client(ZMQTasqClient, {'host': '127.0.0.1',
-                                   'port': 9000,
-                                   'plport': 9001,
-                                   'unix_socket': True}),
-    'zmq': Client(ZMQTasqClient, {'host': '127.0.0.1',
-                                  'port': 9000,
-                                  'plport': 9001}),
-    'tcp': Client(ZMQTasqClient, {'host': '127.0.0.1',
-                                  'port': 9000,
-                                  'plport': 9001})
+backends = {
+    'redis': RedisTasqClient,
+    'amqp': RabbitMQTasqClient,
+    'unix': ZMQTasqClient,
+    'zmq': ZMQTasqClient,
+    'tcp': ZMQTasqClient
 }
 
 
@@ -49,8 +34,8 @@ class TasqQueue:
 
     The formats accepted for the backends are:
 
-    - redis://localhost:6379/0?name=test-queue-redis
-    - amqp://localhost:5672?name=test-queue-rabbitmq
+    - redis://localhost:6379/0?name=redis-queue
+    - amqp://localhost:5672?name=amqp-queue
     - zmq://localhost:9000?plport=9010
     - tcp://localhost:5555
 
@@ -74,28 +59,14 @@ class TasqQueue:
     def __init__(self, backend=u'zmq://localhost:9000',
                  store=None, sign_data=False):
 
-        url = urlparse(backend)
-        scheme = url.scheme or 'zmq'
-        assert url.scheme in {'redis', 'zmq', 'amqp', 'unix', 'tcp'}, \
-            f"Unsupported {url.scheme}"
-        args = {
-            'host': url.hostname,
-            'port': url.port,
-            'db': int(url.path.split('/')[-1]) if url.path else None,
-            'name': url.query.split('=')[-1] if url.query and scheme not in {'tcp', 'zmq'} else None,
-            'plport': int(url.query.split('=')[-1]) if url.query and scheme == 'zmq' else None,
-            'sign_data': sign_data
-        }
-
-        # Update defaults arguments
-        for k in defaults[scheme].arguments:
-            if k not in args or not args[k]:
-                args[k] = defaults[scheme].arguments[k]
-
-        # Remove useless args
-        args = {k: v for k, v in args.items() if v is not None}
-
-        self._backend = defaults[scheme].handler(**args)
+        if isinstance(backend, str):
+            url = urlparse(backend)
+            scheme = url.scheme or 'zmq'
+            assert url.scheme in {'redis', 'zmq', 'amqp', 'unix', 'tcp'}, \
+                f"Unsupported {url.scheme}"
+            self._backend = backends[scheme].from_url(backend, sign_data)
+        else:
+            self._backend = backend
         # Handle only redis as a backend store for now
         if store:
             urlstore = urlparse(store)

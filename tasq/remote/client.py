@@ -5,8 +5,10 @@ Client part of the application, responsible for scheduling jobs to local or
 remote workers.
 """
 
-from __future__ import absolute_import, division, print_function, unicode_literals
+from __future__ import (absolute_import, division,
+                        print_function, unicode_literals)
 
+from urllib.parse import urlparse
 from abc import ABCMeta, abstractmethod
 from concurrent.futures import Future
 from threading import Thread
@@ -23,10 +25,7 @@ from .connection import ConnectionFactory
 
 
 class TasqClientNotConnected(Exception):
-
-    def __init__(self, msg=u''):
-        self.message = msg
-        super().__init__(self.message)
+    pass
 
 
 class TasqFuture(Future):
@@ -44,10 +43,22 @@ class TasqFuture(Future):
 
 class BaseTasqClient(metaclass=ABCMeta):
 
-    """
-    Simple client class to schedule jobs to remote workers, currently
+    """Simple client class to schedule jobs to remote workers, currently
     supports a synchronous way of calling tasks awaiting for results and an
     asynchronous one which collect results in a dedicated dictionary
+
+    Attributes
+    ----------
+    :type host: str
+    :param host: The IP address to connect with
+
+    :type port: int
+    :param port: The port associated with the host param
+
+    :type sign_data: bool or False
+    :param sign_data: Boolean flag, sign bytes passing around through sockets
+                      if True
+
     """
 
     def __init__(self, host, port, sign_data=False):
@@ -99,11 +110,6 @@ class BaseTasqClient(metaclass=ABCMeta):
         while self.pending_results():
             pass
         self.close()
-
-    def __repr__(self):
-        status = 'connected' if self.is_connected else 'disconnected'
-        return f"<BaseTasqClient worker=(tcp://{self.host}:{self.port}, " \
-               f"tcp://{self.host}:{self.port}) status={status}>"
 
     @abstractmethod
     def _make_client(self):
@@ -188,7 +194,11 @@ class BaseTasqClient(metaclass=ABCMeta):
         :type func: func
         :param func: A function to be executed on a worker by enqueing it
 
+        :rtype: tasq.remote.client.TasqFuture
         :return: The result of the func execution
+
+        :raise: tasq.remote.client.TasqClientNotConnected, in case of not
+                connected client
         """
         if not self.is_connected:
             raise TasqClientNotConnected('Client not connected to no worker')
@@ -203,7 +213,30 @@ class ZMQTasqClient(BaseTasqClient):
     """Simple client class to schedule jobs to remote workers, currently
     supports a synchronous way of calling tasks awaiting for results and an
     asynchronous one which collect results in a dedicated dictionary
+
+    Attributes
+    ----------
+    :type host: str
+    :param host: The IP address to connect with
+
+    :type port: int
+    :param port: The port associated with the host param for PUSH channel
+                 communication
+
+    :type plport: int or None
+    :param plport: The pull port to retrieve bytes from
+
+    :type sign_data: bool or False
+    :param sign_data: Boolean flag, sign bytes passing around through sockets
+                      if True
+
+    :type unix_socket: bool or False
+    :param unix_socket: Boolean flag to decide wether to use a UNIX socket or a
+                        TCP one
+
     """
+
+    __extraparams__ = {'plport'}
 
     def __init__(self, host, port, plport=None, sign_data=False, unix_socket=False):
         self._plport = plport or port + 1
@@ -245,12 +278,52 @@ class ZMQTasqClient(BaseTasqClient):
             except KeyError:
                 self._log.error("Can't update result: key not found")
 
+    @classmethod
+    def from_url(cls, url, sign_data=False):
+        u = urlparse(url)
+        scheme = u.scheme or 'zmq'
+        assert scheme in ('zmq', 'unix', 'tcp'), f"Unsupported {scheme}"
+        extras = {t.split('=')[0]: t.split('=')[1] for t in u.query.split('?')}
+        extras = {k: v for k, v in extras.items() if k in cls.__extraparams__}
+        conn_args = {
+            'host': u.hostname or '127.0.0.1',
+            'port': u.port or 9000,
+            'plport': int(extras.get('plport', 0)),
+            'sign_data': sign_data,
+            'unix_socket': scheme == 'unix'
+        }
+        return cls(**conn_args)
+
 
 class RedisTasqClient(BaseTasqClient):
 
-    """"""
+    """Simple Redis client class to schedule jobs to remote workers using
+    redis as the backend broker.
 
-    def __init__(self, host, port, db, name, sign_data=False):
+    Attributes
+    ----------
+    :type host: str or 'localhost'
+    :param host: The IP address of the Redis instance to connect with
+
+    :type port: int or 6379
+    :param port: The port associated with the host param
+
+    :type db: int or 0
+    :param db: The database to use on redis for the queues
+
+    :type name: str or redis-queue
+    :param name: The name of the redis queue
+
+    :type sign_data: bool or False
+    :param sign_data: Boolean flag, sign bytes passing around through sockets
+                      if True
+
+    """
+
+    __extraparams__ = {'db', 'name'}
+
+    def __init__(self, host='localhost', port=6379,
+                 db=0, name='redis-queue', sign_data=False):
         self._db = db
         self._name = name
         super().__init__(host, port, sign_data)
@@ -304,12 +377,49 @@ class RedisTasqClient(BaseTasqClient):
         if self.is_connected:
             self._is_connected = False
 
+    @classmethod
+    def from_url(cls, url, sign_data=False):
+        u = urlparse(url)
+        scheme = u.scheme or 'redis'
+        assert scheme == 'redis', f"Unsupported {scheme}"
+        extras = {t.split('=')[0]: t.split('=')[1] for t in u.query.split('?')}
+        extras = {k: v for k, v in extras.items() if k in cls.__extraparams__}
+        conn_args = {
+            'host': u.hostname or 'localhost',
+            'port': u.port or 6379,
+            'db': int(extras.get('db', 0)),
+            'name': extras.get('name', 'redis-queue'),
+            'sign_data': sign_data
+        }
+        return cls(**conn_args)
+
 
 class RabbitMQTasqClient(BaseTasqClient):
 
-    """"""
+    """Simple RabbitMQ client class to schedule jobs to remote workers using
+    RabbitMQ as the backend broker.
 
-    def __init__(self, host, port, name, sign_data=False):
+    Attributes
+    ----------
+    :type host: str or 'localhost'
+    :param host: The IP address of the RabbitMQ instance to connect with
+
+    :type port: int or 5672
+    :param port: The port associated with the host param
+
+    :type name: str or amqp-queue
+    :param name: The name of the RabbitMQ queue
+
+    :type sign_data: bool or False
+    :param sign_data: Boolean flag, sign bytes passing around through sockets
+                      if True
+
+    """
+
+    __extraparams__ = {'name'}
+
+    def __init__(self, host='localhost', port=5672,
+                 name='amqp-queue', sign_data=False):
         self._name = name
         super().__init__(host, port, sign_data)
 
@@ -356,6 +466,21 @@ class RabbitMQTasqClient(BaseTasqClient):
         """Disconnect PUSH and PULL sockets"""
         if self.is_connected:
             self._is_connected = False
+
+    @classmethod
+    def from_url(cls, url, sign_data=False):
+        u = urlparse(url)
+        scheme = u.scheme or 'amqp'
+        assert scheme == 'amqp', f"Unsupported {scheme}"
+        extras = {t.split('=')[0]: t.split('=')[1] for t in u.query.split('?')}
+        extras = {k: v for k, v in extras.items() if k in cls.__extraparams__}
+        conn_args = {
+            'host': u.hostname or 'localhost',
+            'port': u.port or 5672,
+            'name': extras.get('name', 'amqp-queue'),
+            'sign_data': sign_data
+        }
+        return cls(**conn_args)
 
 
 class TasqClientPool:
