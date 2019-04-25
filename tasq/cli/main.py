@@ -105,6 +105,7 @@ def main():
     sign_data = conf['sign_data']
     unix_socket = conf['unix_socket']
     num_workers = 4
+    db = 0
     worker_type = WorkerType.ActorWorker
     if args.verbose:
         verbose = True
@@ -141,17 +142,20 @@ def main():
     elif args.subcommand == 'redis':
         if args.addr:
             host = args.addr
+        port = 6379
         if args.port:
             port = int(args.port)
-        db = int(args.db) or 0
-        name = args.name or 'redisqueue'
+        if args.db:
+            db = int(args.db)
+        name = args.name or 'redis-queue'
         start_redis_worker(host, port, db, name, sign_data, worker_type)
     elif args.subcommand == 'rabbitmq':
         if args.addr:
             host = args.addr
+        port = 5672
         if args.port:
             port = int(args.port)
-        name = args.name or 'rabbitmqqueue'
+        name = args.name or 'rabbitmq-queue'
         start_rabbitmq_worker(host, port, name, sign_data, worker_type)
     elif args.random:
         start_random_workers(host, int(args.random), sign_data, unix_socket)

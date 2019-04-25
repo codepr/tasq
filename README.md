@@ -51,9 +51,9 @@ In [3]: def dup(n):
 In [4]: fut = tq.put(dup, 5, name='task-01')
 
 In [5]: fut
-Out[5]: <Future at 0x7f0f951380f0 state=finished returned int>
+Out[5]: <TasqFuture at 0x7f2851826518 state=finished returned JobResult>
 
-In [6]: fut.result()
+In [6]: fut.unwrap()
 Out[6]: 10
 ```
 

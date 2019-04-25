@@ -5,11 +5,13 @@ The main client module, provides interfaces to instantiate queues
 """
 
 import os
+from queue import Queue
+from threading import Thread
 from urllib.parse import urlparse
 from collections import namedtuple
 from tasq.remote.backends.redis import RedisStore
 from tasq.remote.client import (ZMQTasqClient, RedisTasqClient,
-                                RabbitMQTasqClient)
+                                RabbitMQTasqClient, TasqFuture)
 
 
 def init_client(client, host, port, *args, **kwargs):
@@ -94,25 +96,42 @@ class TasqQueue:
         args = {k: v for k, v in args.items() if v is not None}
 
         self._backend = defaults[scheme].handler(**args)
-
+        # Handle only redis as a backend store for now
         if store:
             urlstore = urlparse(store)
             assert urlstore.scheme in {'redis'}, f"Unknown {scheme}"
             db = int(urlstore.path.split('/')[-1]) if url.query else 0
             self._store = RedisStore(urlstore.hostname, urlstore.port, db)
+            self._results = Queue()
+            Thread(target=self._store_results, daemon=True).start()
         else:
             self._store = store
         # Connect with the backend
         self._backend.connect()
 
+    def _store_results(self):
+        while True:
+            tasqfuture = self._results.get()
+            if isinstance(tasqfuture, TasqFuture):
+                job_result = tasqfuture.result()
+            else:
+                job_result = tasqfuture
+            self._store.put_result(job_result)
+
     def put(self, func, *args, **kwargs):
-        return self._backend.schedule(func, *args, **kwargs)
+        tasq_result = self._backend.schedule(func, *args, **kwargs)
+        if self._store:
+            self._results.put(tasq_result)
+        return tasq_result
 
     def pub_blocking(self, func, *args, **kwargs):
-        return self._backend.schedule_blocking(func, *args, **kwargs)
+        tasq_result = self._backend.schedule_blocking(func, *args, **kwargs)
+        if self._store:
+            self._results.put(tasq_result)
+        return tasq_result
 
     def pending_jobs(self):
-        return self._backend.pending_jobs()
+        return list(self._backend.pending_jobs())
 
     def results(self):
         return self._backend.results

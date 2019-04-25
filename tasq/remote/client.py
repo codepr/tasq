@@ -279,7 +279,7 @@ class RedisTasqClient(BaseTasqClient):
                 continue
             self._log.debug("Gathered result: %s", job_result)
             try:
-                self._results[job_result.name].set_result(job)
+                self._results[job_result.name].set_result(job_result)
             except KeyError:
                 self._log.error("Can't update result: key not found")
 
@@ -335,7 +335,7 @@ class RabbitMQTasqClient(BaseTasqClient):
             job_result = self._client.recv_result()
             self._log.debug("Gathered result: %s", job_result)
             try:
-                self._results[job_result.name].set_result(job)
+                self._results[job_result.name].set_result(job_result)
             except KeyError:
                 self._log.error("Can't update result: key not found")
 
