@@ -1,17 +1,19 @@
 """
 tasq.worker.py
 ~~~~~~~~~~~~~~
-Generic worker, useful to run jobs in a single node with multiple core available.
+Generic worker, useful to run jobs in a single node with multiple core
+available.
 """
 
-from __future__ import absolute_import, division, print_function, unicode_literals
+from __future__ import (absolute_import, division,
+                        print_function, unicode_literals)
 
 import sys
 import uuid
 import signal
 from threading import Thread
 from abc import ABCMeta, abstractmethod
-from multiprocessing import Process
+from multiprocessing import Process, JoinableQueue, get_context
 
 from .logger import get_logger
 from .remote.sockets import pickle_and_compress, decompress_and_unpickle
@@ -64,24 +66,8 @@ class Worker(metaclass=ABCMeta):
         return self._done
 
     @abstractmethod
-    def run(self):
-        pass
-
-    def exit(self, sgl, frm):
-        """Handle exit signals"""
-        if not self._done and self._last_job is not None:
-            self._job_queue.put(self._last_job)
-            self._log.debug("%s - Re added interrupted job", self.name)
-        self._log.debug("%s - Exiting", self.name)
-        self._job_queue.put(None)
-        sys.exit()
-
-
-class QueueWorker(Worker):
-
-    """Worker unit based on `multiprocessing.JoinableQueue`, used to pass jobs
-    to workers in a producer-consumer like way
-    """
+    def execute_job(self, job):
+        raise NotImplementedError()
 
     def run(self):
         while True:
@@ -108,18 +94,7 @@ class QueueWorker(Worker):
                     except ValueError:
                         delay = multiples[eta[-1]] * int(eta[:-1])
                 job.add_delay(delay)
-                response = job.execute()
-                self._job_queue.task_done()
-                self._log.debug(
-                    "Job %s succesfully executed in %s s",
-                    job.job_id,
-                    job.execution_time()
-                )
-                self._log.debug(
-                    'Timed job %s result = %s',
-                    job.job_id,
-                    response.value
-                )
+                response = self.execute_job(job)
                 # Push the completed job in the result queue ready to be
                 # answered to the requesting client
                 self._completed_jobs.put(response)
@@ -127,32 +102,35 @@ class QueueWorker(Worker):
                 job.kwargs['eta'] = str(job.delay) + 's'
                 self._job_queue.put(pickle_and_compress(job))
             else:
-                response = job.execute()
-                self._job_queue.task_done()
-                self._log.debug(
-                    "Job %s succesfully executed in %s s",
-                    job.job_id,
-                    job.execution_time()
-                )
+                response = self.execute_job(job)
                 # Push the completed job in the result queue ready to be
                 # answered to the requesting client
                 self._completed_jobs.put(response)
             self._done = True
 
+    def exit(self, sgl, frm):
+        """Handle exit signals"""
+        if not self._done and self._last_job is not None:
+            self._job_queue.put(self._last_job)
+            self._log.debug("%s - Re added interrupted job", self.name)
+        self._log.debug("%s - Exiting", self.name)
+        self._job_queue.put(None)
+        sys.exit()
 
-class ThreadQueueWorker(QueueWorker, Thread):
 
-    """Worker unit based on `threading.Thread` superclass, useful if the
-    majority of the jobs are I/O bound
+class ProcessQueueWorker(Worker, Process):
+
+    """Worker unit based on `multiprocessing.JoinableQueue`, used to pass jobs
+    to workers in a producer-consumer like way, meant to be employed in case
+    the majority of the jobs are CPU bound
     """
 
-    pass
-
-
-class ProcessQueueWorker(QueueWorker, Process):
-
-    """Worker unit based on `multiprocessing.Process` superclass, meant to be
-    employed in case the majority of the jobs are CPU bound
-    """
-
-    pass
+    def execute_job(self, job):
+        response = job.execute()
+        self._job_queue.task_done()
+        self._log.debug(
+            "Job %s succesfully executed in %s s",
+            job.job_id,
+            job.execution_time()
+        )
+        return response

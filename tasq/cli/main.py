@@ -3,17 +3,16 @@ tasq.cli.main.py
 ~~~~~~~~~~~~~~~~
 """
 
-from __future__ import absolute_import, division, print_function, unicode_literals
+from __future__ import (absolute_import, division,
+                        print_function, unicode_literals)
 
 import argparse
 from enum import Enum
 from ..settings import get_config
-from ..worker import ThreadQueueWorker
 
 
 class WorkerType(Enum):
     ActorWorker = 'actor'
-    ThreadWorker = 'thread'
     ProcessWorker = 'process'
 
 
@@ -40,9 +39,6 @@ def start_worker(host, port, sign_data, unix_socket, worker_type):
     if worker_type == WorkerType.ActorWorker:
         supervisor = ZMQActorSupervisor(host, port, port + 1,
                                 sign_data=sign_data, unix_socket=unix_socket)
-    elif worker_type == WorkerType.ThreadWorker:
-        supervisor = ZMQQueueSupervisor(host, port, port + 1, worker_class=ThreadQueueWorker,
-                                sign_data=sign_data, unix_socket=unix_socket)
     else:
         supervisor = ZMQQueueSupervisor(host, port, port + 1,
                                 sign_data=sign_data, unix_socket=unix_socket)
@@ -54,10 +50,6 @@ def start_redis_worker(host, port, db, name, sign_data, worker_type):
     if worker_type == WorkerType.ActorWorker:
         supervisor = RedisActorSupervisor(host, port, db,
                                           name, sign_data=sign_data)
-    elif worker_type == WorkerType.ThreadWorker:
-        supervisor = RedisQueueSupervisor(host, port, db, name,
-                                          worker_class=ThreadQueueWorker,
-                                          sign_data=sign_data)
     else:
         supervisor = RedisQueueSupervisor(host, port, db, name,
                                           sign_data=sign_data)
@@ -69,10 +61,6 @@ def start_rabbitmq_worker(host, port, name, sign_data, worker_type):
     if worker_type == WorkerType.ActorWorker:
         supervisor = RabbitMQActorSupervisor(host, port,
                                           name, sign_data=sign_data)
-    elif worker_type == WorkerType.ThreadWorker:
-        supervisor = RabbitMQQueueSupervisor(host, port, name,
-                                          worker_class=ThreadQueueWorker,
-                                          sign_data=sign_data)
     else:
         supervisor = RabbitMQQueueSupervisor(host, port, name,
                                           sign_data=sign_data)

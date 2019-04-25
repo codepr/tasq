@@ -14,7 +14,7 @@ from collections import deque
 
 import zmq
 
-from ..job import Job
+from ..job import Job, JobStatus
 from ..logger import get_logger
 from ..actors.routers import RoundRobinRouter
 from ..actors.actorsystem import ActorSystem
@@ -27,6 +27,19 @@ class TasqClientNotConnected(Exception):
     def __init__(self, msg=u''):
         self.message = msg
         super().__init__(self.message)
+
+
+class TasqFuture(Future):
+
+    def unwrap(self):
+        job_result = self.result()
+        if job_result.outcome == JobStatus.FAILED:
+            return job_result.exc
+        return job_result.value
+
+    def exec_time(self):
+        job_result = self.result()
+        return job_result.exec_time
 
 
 class BaseTasqClient(metaclass=ABCMeta):
@@ -145,7 +158,7 @@ class BaseTasqClient(metaclass=ABCMeta):
         :type func: func
         :param func: A function to be executed on a worker by enqueing it
 
-        :rtype: concurrent.futures.Future
+        :rtype: tasq.remote.client.TasqFuture
         :return: A future eventually containing the result of the func
                  execution
         """
@@ -158,7 +171,7 @@ class BaseTasqClient(metaclass=ABCMeta):
             return None
         # Create a Future and return it, _gatherer thread will set the
         # result once received
-        future = Future()
+        future = TasqFuture()
         self._results[name] = future
         # Send job to worker
         self._client.send(job)
@@ -224,15 +237,11 @@ class ZMQTasqClient(BaseTasqClient):
                 job_result = self._client.recv()
             except (zmq.error.ContextTerminated, zmq.error.ZMQError):
                 self._log.warning("ZMQ error while receiving results back")
-                pass
             if not job_result:
                 continue
             self._log.debug("Gathered result: %s", job_result)
             try:
-                if not job_result.value and job_result.exc:
-                    self._results[job_result.name].set_result(job_result.exc)
-                else:
-                    self._results[job_result.name].set_result(job_result.value)
+                self._results[job_result.name].set_result(job_result)
             except KeyError:
                 self._log.error("Can't update result: key not found")
 
@@ -270,10 +279,7 @@ class RedisTasqClient(BaseTasqClient):
                 continue
             self._log.debug("Gathered result: %s", job_result)
             try:
-                if not job_result.value and job_result.exc:
-                    self._results[job_result.name].set_result(job_result.exc)
-                else:
-                    self._results[job_result.name].set_result(job_result.value)
+                self._results[job_result.name].set_result(job)
             except KeyError:
                 self._log.error("Can't update result: key not found")
 
@@ -313,8 +319,8 @@ class RabbitMQTasqClient(BaseTasqClient):
 
     def __repr__(self):
         status = 'connected' if self.is_connected else 'disconnected'
-        return f"<RabbitMQTasqClient worker=(amqp://{self.host}:{self.port}, " \
-               f"amqp://{self.host}:{self.port}) status={status}>"
+        return f"<RabbitMQTasqClient worker=(amqp://{self.host}:{self.port}) " \
+               f"status={status}>"
 
     def _make_client(self):
         return ConnectionFactory \
@@ -329,10 +335,7 @@ class RabbitMQTasqClient(BaseTasqClient):
             job_result = self._client.recv_result()
             self._log.debug("Gathered result: %s", job_result)
             try:
-                if not job_result.value and job_result.exc:
-                    self._results[job_result.name].set_result(job_result.exc)
-                else:
-                    self._results[job_result.name].set_result(job_result.value)
+                self._results[job_result.name].set_result(job)
             except KeyError:
                 self._log.error("Can't update result: key not found")
 
@@ -358,7 +361,8 @@ class RabbitMQTasqClient(BaseTasqClient):
 class TasqClientPool:
 
     """Basic client pool, defining methods to talk to multiple remote
-    workers"""
+    workers
+    """
 
     # TODO WIP - still a rudimentary implementation
 

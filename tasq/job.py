@@ -5,7 +5,8 @@ Jobs related classes and functions, provides abstractions over the concept of a
 task.
 """
 
-from __future__ import absolute_import, division, print_function, unicode_literals
+from __future__ import (absolute_import, division,
+                        print_function, unicode_literals)
 
 import sys
 import uuid
@@ -109,21 +110,25 @@ class Job:
         """
         if self._delay:
             time.sleep(self._delay)
-            return self._execute_job()
         return self._execute_job()
 
     def _execute_job(self):
         """Execute the function with arguments and keyword arguments"""
+        exc = None
+        outcome = JobStatus.FAILED
         self._start_time = time.time()
-        try:  # pylint: disable=bare-except
-            result = JobResult(self.job_id, self._func(*self._args, **self._kwargs))
-        except:  # pylint: disable=bare-except
+        try:
+            result = self._func(*self._args, **self._kwargs)
+            outcome = JobStatus.OK
+        except:  # noqa pylint: disable=bare-except
             # Failing
             self._status = JobStatus.FAILED
-            result = JobResult(self.job_id, None, sys.exc_info()[0])
+            result = None
+            exc = sys.exc_info()[0]
         finally:
             self._end_time = time.time()
-        return result
+        return JobResult(self.job_id, outcome,
+                         result, exc, self.execution_time())
 
     def __repr__(self):
         args = ', '.join(str(i) for i in self.args)
@@ -144,19 +149,13 @@ class JobResult:
 
     """Wrapper class for results of task executions"""
 
-    def __init__(self, name, value, exc=None):
-        self._name = name
-        self._value = value
-        self._exc = exc
+    def __init__(self, name, outcome, value, exc=None, exec_time=None):
+        self.name = name
+        self.outcome = outcome
+        self.value = value
+        self.exc = exc
+        self.exec_time = exec_time
 
-    @property
-    def name(self):
-        return self._name
-
-    @property
-    def value(self):
-        return self._value
-
-    @property
-    def exc(self):
-        return self._exc
+    def __repr__(self):
+        return f"""<tasq.job.JobResult({self.name}, {self.outcome},""" \
+            f"""{self.value}, {self.exc}, {self.exec_time})>"""

@@ -31,6 +31,7 @@ class JobQueue(JoinableQueue):
 
     :type worker_class: worker.Worker
     :param worker_class: The worker subclass to use as the thread/process workers
+
     """
 
     def __init__(self, num_workers=4, start_method='fork',
@@ -64,7 +65,8 @@ class JobQueue(JoinableQueue):
         Args:
         -----
         :type job: tasq.Job
-        :param job: The `tasq.Job` object containing the function to be executed
+        :param job: The `tasq.Job` object containing the function to be
+                    executed
         """
         self.put(job)
 
@@ -74,8 +76,8 @@ class JobQueue(JoinableQueue):
         Args
         ----
         :type timeout: int or None
-        :param timeout: The time to wait to get the next incoming job, if None block
-                        forever till a new job arrive
+        :param timeout: The time to wait to get the next incoming job, if None
+                        block forever till a new job arrive
 
         :return: A `tasq.Job` object
         """

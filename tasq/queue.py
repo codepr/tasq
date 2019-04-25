@@ -8,7 +8,8 @@ import os
 from urllib.parse import urlparse
 from collections import namedtuple
 from tasq.remote.backends.redis import RedisStore
-from tasq.remote.client import ZMQTasqClient, RedisTasqClient, RabbitMQTasqClient
+from tasq.remote.client import (ZMQTasqClient, RedisTasqClient,
+                                RabbitMQTasqClient)
 
 
 def init_client(client, host, port, *args, **kwargs):
@@ -28,14 +29,14 @@ defaults = {
                                         'name': os.getpid()}),
     'unix': Client(ZMQTasqClient, {'host': '127.0.0.1',
                                    'port': 9000,
-                                   'pull_port': 9001,
+                                   'plport': 9001,
                                    'unix_socket': True}),
     'zmq': Client(ZMQTasqClient, {'host': '127.0.0.1',
                                   'port': 9000,
-                                  'pull_port': 9001}),
+                                  'plport': 9001}),
     'tcp': Client(ZMQTasqClient, {'host': '127.0.0.1',
                                   'port': 9000,
-                                  'pull_port': 9001})
+                                  'plport': 9001})
 }
 
 
@@ -48,7 +49,7 @@ class TasqQueue:
 
     - redis://localhost:6379/0?name=test-queue-redis
     - amqp://localhost:5672?name=test-queue-rabbitmq
-    - zmq://localhost:9000?pull_port=9010
+    - zmq://localhost:9000?plport=9010
     - tcp://localhost:5555
 
     For the store part currently only Redis is supported as a backend:
@@ -72,19 +73,17 @@ class TasqQueue:
                  store=None, sign_data=False):
 
         url = urlparse(backend)
+        scheme = url.scheme or 'zmq'
         assert url.scheme in {'redis', 'zmq', 'amqp', 'unix', 'tcp'}, \
             f"Unsupported {url.scheme}"
-        scheme = url.scheme or 'zmq'
         args = {
             'host': url.hostname,
             'port': url.port,
             'db': int(url.path.split('/')[-1]) if url.path else None,
-            'name': url.query.split('=')[-1] if url.query else None,
-            'pull_port': int(url.query.split('=')[-1]) if url.query and scheme == 'zmq' else None,
+            'name': url.query.split('=')[-1] if url.query and scheme not in {'tcp', 'zmq'} else None,
+            'plport': int(url.query.split('=')[-1]) if url.query and scheme == 'zmq' else None,
             'sign_data': sign_data
         }
-
-        print(args)
 
         # Update defaults arguments
         for k in defaults[scheme].arguments:

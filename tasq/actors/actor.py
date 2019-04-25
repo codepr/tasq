@@ -109,22 +109,3 @@ class Actor(ABC):
     def run(self):
         """Must be implemented by subclasses"""
         raise NotImplementedError
-
-
-class Result:
-
-    """Simple class to wrap a result for processed jobs, acts much like a
-    future object
-    """
-
-    def __init__(self):
-        self._event = Event()
-        self._result = None
-
-    def set_result(self, value):
-        self._result = value
-        self._event.set()
-
-    def result(self, timeout=None):
-        self._event.wait(timeout)
-        return self._result

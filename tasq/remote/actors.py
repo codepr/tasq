@@ -8,7 +8,7 @@ tasks incoming from remote calls.
 from __future__ import absolute_import, division, print_function, unicode_literals
 
 from concurrent.futures import Future
-from ..actors.actor import Actor, Result
+from ..actors.actor import Actor
 
 
 class WorkerActor(Actor):
@@ -49,7 +49,7 @@ class WorkerActor(Actor):
         :param job: The `tasq.Job` object containing the function to be
                     executed in the current actor
 
-        :return: A `tasq.Result` object, future-like object that will contain
+        :return: A `concurrent.Future` object, future object that will contain
                  the result of the job execution
         """
         self._log.debug(
@@ -57,16 +57,16 @@ class WorkerActor(Actor):
             self.name,
             self.mailbox_size
         )
-        r = Result()
-        self.send((job, r))
-        return r
+        f = Future()
+        self.send((job, f))
+        return f
 
     def run(self):
         """Executes pending jobs, setting the results to the associated
         `Result` object once it is ready
         """
         while True:
-            job, result = self.recv()
+            job, future = self.recv()
             self._log.debug("Received %s", job)
             # If eta in keyword arguments spawn a timed actor and send job to it
             if 'eta' in job.kwargs:
@@ -93,7 +93,7 @@ class WorkerActor(Actor):
                     jobres = response.value
                 self._log.debug('%s - Job %s result = %s',
                                 self.name, job.job_id, jobres)
-                result.set_result(response)
+                future.set_result(response)
 
 
 class ResponseActor(Actor):
@@ -163,10 +163,10 @@ class TimedActor(Actor):
         :type eta: str
         :param eta: The time that pass in every tic of the repeating interval
 
-        :return: A `tasq.Result` object, future-like object that will contain
+        :return: A `concurrent.Future` object, future object that will contain
                  the result of the job execution
         """
-        result = Result()
+        future = Future()
         multiples = {'h': 60 * 60, 'm': 60, 's': 1}
         if isinstance(eta, int):
             delay = eta
@@ -181,7 +181,8 @@ class TimedActor(Actor):
             self.mailbox_size
         )
         job.add_delay(delay)
-        self.send((job, result))
+        self.send((job, future))
+        return future
 
     def run(self):
         """Executes pending jobs, setting the results to the associated
@@ -239,7 +240,7 @@ class ClientWorker(Actor):
         :param job: The `tasq.Job` object containing the function to be
                     executed in the current actor
 
-        :return: A `tasq.Result` object, future-like object that will contain
+        :return: A `concurrent.Future` object, future object that will contain
                  the result of the job execution
         """
         future = Future()
