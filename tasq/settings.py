@@ -3,7 +3,8 @@ tasq.settings.py
 ~~~~~~~~~~~~~~~~
 """
 
-from __future__ import absolute_import, division, print_function, unicode_literals
+from __future__ import (absolute_import, division,
+                        print_function, unicode_literals)
 
 import os
 from .util import Configuration
@@ -12,12 +13,25 @@ from .util import Configuration
 class TasqConfig(Configuration):
 
     defaults = {
-        'host': '127.0.0.1',
-        'port': 9000,
+        'addr': '127.0.0.1',
+        'zmq': {
+            'push_port': 9001,
+            'pull_port': 9000
+        },
+        'redis': {
+            'port': 6379,
+            'db': 0,
+            'name': 'redis-queue'
+        },
+        'rabbitmq': {
+            'port': 5672,
+            'name': 'rabbitmq-queue'
+        },
         'sign_data': False,
-        'sharedkey': 'put-here-a-shared-key',
+        'sharedkey': os.getenv('TASQ_SIGN_KEY', 'put-here-a-shared-key'),
         'unix_socket': False,
-        'verbose': False
+        'log_level': 'INFO',
+        'num_workers': 4
     }
 
 

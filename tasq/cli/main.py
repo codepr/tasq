@@ -7,155 +7,117 @@ from __future__ import (absolute_import, division,
                         print_function, unicode_literals)
 
 import argparse
-from enum import Enum
 from ..settings import get_config
+from tasq.remote.supervisor import supervisor_factory
+from tasq.logger import logger
 
 
-class WorkerType(Enum):
-    ActorWorker = 'actor'
-    ProcessWorker = 'process'
+class UnknownSupervisorException(Exception):
+    pass
 
 
-def get_parser():
-    parser = argparse.ArgumentParser(description='Tasq CLI commands')
+supervisors = {
+    'actor': {
+        'zmq': 'ZMQ_ACTOR_SUPERVISOR',
+        'redis': 'REDIS_ACTOR_SUPERVISOR',
+        'rabbitmq': 'AMQP_ACTOR_SUPERVISOR'
+    },
+    'process': {
+        'zmq': 'ZMQ_QUEUE_SUPERVISOR',
+        'redis': 'REDIS_QUEUE_SUPERVISOR',
+        'rabbitmq': 'AMQP_QUEUE_SUPERVISOR'
+    }
+}
+
+
+def parse_arguments():
+    parser = argparse.ArgumentParser(description='Tasq CLI')
     parser.add_argument('subcommand')
-    parser.add_argument('-f', action='store')
-    parser.add_argument('--secure', '-s', action='store_true')
-    parser.add_argument('--unix', '-u', action='store_true')
-    parser.add_argument('--workers', nargs='*')
-    parser.add_argument('--worker-type', action='store')
-    parser.add_argument('--num-workers', action='store')
-    parser.add_argument('--random', action='store')
-    parser.add_argument('--verbose', '-v', action='store_true')
-    parser.add_argument('--addr', '-a', action='store')
-    parser.add_argument('--port', '-p', action='store')
-    parser.add_argument('--db', action='store')
-    parser.add_argument('--name', action='store')
-    return parser
+    parser.add_argument('--conf', '-c',
+                        help='The filepath to the configuration file, in json',
+                        nargs='?')
+    parser.add_argument(
+        '--address', '-a',
+        help='The ZMQ host address to connect to, default to localhost',
+        nargs='?'
+    )
+    parser.add_argument('--port', '-p',
+                        help='The ZMQ port to connect to, default to 9000 for '
+                        'ZMQ/TCP/UNIX connections, to 6379 while using a '
+                        'redis broker or 5672 in case of RabbitMQ as backend.',
+                        nargs='?',
+                        type=int)
+    parser.add_argument('--plport',
+                        help='The ZMQ port to connect to, default to 9001 for '
+                        'ZMQ/TCP/UNIX connections',
+                        nargs='?',
+                        type=int)
+    parser.add_argument('--worker-type',
+                        help='The type of worker to deploy for a supervisor',
+                        nargs='?')
+    parser.add_argument('--db',
+                        help='The database to use with redis as backend',
+                        nargs='?',
+                        type=int)
+    parser.add_argument(
+        '--name',
+        help='The name of the queue, only for redis or rabbitmq backends',
+        nargs='?'
+    )
+    parser.add_argument(
+        '--shared-key', '-sk',
+        help='The shared key to use to sign byte streams between clients and '
+        'supervisors',
+        nargs='?'
+    )
+    parser.add_argument('--unix', '-u',
+                        help='Unix socket flag, in case supervisors and '
+                        'clients reside on the same node',
+                        action='store_true')
+    parser.add_argument('--num-workers',
+                        help='Number of workers to instantiate on the node',
+                        nargs='?',
+                        type=int)
+    parser.add_argument('--log-level',
+                        help='Set logging level',
+                        nargs='?')
+    args = parser.parse_args()
+    return args
 
 
-def start_worker(host, port, sign_data, unix_socket, worker_type):
-    from tasq.remote.supervisor import ZMQActorSupervisor, ZMQQueueSupervisor
-    if worker_type == WorkerType.ActorWorker:
-        supervisor = ZMQActorSupervisor(host, port, port + 1,
-                                sign_data=sign_data, unix_socket=unix_socket)
+def start_worker(supervisor_type, worker_type, host, **kwargs):
+    try:
+        s_type = supervisors[worker_type][supervisor_type]
+    except KeyError:
+        raise UnknownSupervisorException()
     else:
-        supervisor = ZMQQueueSupervisor(host, port, port + 1,
-                                sign_data=sign_data, unix_socket=unix_socket)
-    supervisor.serve_forever()
-
-
-def start_redis_worker(host, port, db, name, sign_data, worker_type):
-    from tasq.remote.supervisor import RedisActorSupervisor, RedisQueueSupervisor
-    if worker_type == WorkerType.ActorWorker:
-        supervisor = RedisActorSupervisor(host, port, db,
-                                          name, sign_data=sign_data)
-    else:
-        supervisor = RedisQueueSupervisor(host, port, db, name,
-                                          sign_data=sign_data)
-    supervisor.serve_forever()
-
-
-def start_rabbitmq_worker(host, port, name, sign_data, worker_type):
-    from tasq.remote.supervisor import RabbitMQActorSupervisor, RabbitMQQueueSupervisor
-    if worker_type == WorkerType.ActorWorker:
-        supervisor = RabbitMQActorSupervisor(host, port,
-                                          name, sign_data=sign_data)
-    else:
-        supervisor = RabbitMQQueueSupervisor(host, port, name,
-                                          sign_data=sign_data)
-    supervisor.serve_forever()
-
-
-def start_workers(workers, sign_data, unix_socket):
-    from tasq.remote.supervisor import Supervisors
-    supervisors = Supervisors(workers, sign_data=sign_data, unix_socket=unix_socket)
-    supervisors.start_procs()
-
-
-def start_random_workers(host, num_workers, sign_data, unix_socket):
-    import random
-    from tasq.remote.supervisor import Supervisors
-    workers_set = set()
-    init_port = 9000
-    while True:
-        port = random.randint(init_port, 65000)
-        if (host, port, port + 1) in workers_set:
-            continue
-        workers_set.add((host, port, port + 1))
-        if len(workers_set) == num_workers:
-            break
-        init_port = port + 2
-    supervisors = Supervisors(list(workers_set), sign_data=sign_data, unix_socket=unix_socket)
-    supervisors.start_procs()
-
-
-def _translate_peers(workers):
-    return [tuple(x.split(':')) for x in workers]
+        supervisor = supervisor_factory.create(s_type, host=host, **kwargs)
+        supervisor.serve_forever()
 
 
 def main():
-    conf = get_config()
-    parser = get_parser()
-    args = parser.parse_args()
-    if args.f:
-        conf = get_config(path=args.f)
-    host, port = conf['host'], conf['port']
-    verbose = conf['verbose']
+    args = parse_arguments()
+    conf = get_config(args.conf)
+    logger.loglevel = args.log_level or conf['log_level']
     sign_data = conf['sign_data']
     unix_socket = conf['unix_socket']
-    num_workers = 4
-    db = 0
-    worker_type = WorkerType.ActorWorker
-    if args.verbose:
-        verbose = True
-    if args.secure:
-        sign_data = True
-    if args.unix:
-        unix_socket = True
-    if args.num_workers:
-        num_workers = args.num_workers
-    if args.worker_type:
-        try:
-            worker_type = WorkerType(args.worker_type)
-        except ValueError:
-            print(f"{args.worker_type} is not a valid type: use either process "
-                  "or actor.  Fallbacking to actor")
-    if args.workers:
-        try:
-            pairs = conf['workers']
-        except KeyError:
-            pairs = args.workers
-            if not pairs:
-                print("No [host:port] list specified")
-            else:
-                workers = _translate_peers(pairs)
-        else:
-            workers = _translate_peers(args.workers or conf['workers'])
-        start_workers(workers, sign_data, unix_socket)
+    num_workers = args.num_workers or conf['num_workers']
+    worker_type = args.worker_type or 'actor'
+    addr = args.address or conf['addr']
     if args.subcommand == 'worker':
-        if args.addr:
-            host = args.addr
-        if args.port:
-            port = int(args.port)
-        start_worker(host, port, sign_data, unix_socket, worker_type)
-    elif args.subcommand == 'redis':
-        if args.addr:
-            host = args.addr
-        port = 6379
-        if args.port:
-            port = int(args.port)
-        if args.db:
-            db = int(args.db)
-        name = args.name or 'redis-queue'
-        start_redis_worker(host, port, db, name, sign_data, worker_type)
-    elif args.subcommand == 'rabbitmq':
-        if args.addr:
-            host = args.addr
-        port = 5672
-        if args.port:
-            port = int(args.port)
-        name = args.name or 'rabbitmq-queue'
-        start_rabbitmq_worker(host, port, name, sign_data, worker_type)
-    elif args.random:
-        start_random_workers(host, int(args.random), sign_data, unix_socket)
+        push_port = args.plport or conf['zmq']['push_port']
+        pull_port = args.port or conf['zmq']['pull_port']
+        start_worker('zmq', worker_type, addr, push_port=push_port,
+                     pull_port=pull_port, sign_data=sign_data,
+                     unix_socket=unix_socket)
+    elif args.subcommand == 'redis-worker':
+        port = args.port or conf['redis']['port']
+        db = args.db or conf['redis']['db']
+        name = args.name or conf['redis']['name']
+        start_worker('redis', worker_type, addr, port,
+                     db=db, name=name, sign_data=sign_data)
+    elif args.subcommand == 'rabbitmq-worker':
+        port = args.port or conf['rabbitmq']['port']
+        name = args.name or conf['rabbitmq']['name']
+        start_worker('rabbitmq', worker_type, addr,
+                     port, name=name, sign_data=sign_data)

@@ -1,3 +1,9 @@
+### 1.1.8
+(Apr 26, 2019)
+
+- Refactored CLI commands and logging format
+- Added factory methods to supervisors
+
 ### 1.1.7
 (Apr 26, 2019)
 

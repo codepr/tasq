@@ -209,6 +209,12 @@ class ZMQActorSupervisor(ZMQSupervisor):
                 res = self._workers.route(job)
                 self._responses.route(res)
 
+    @classmethod
+    def create(cls, host, pull_port, push_port, num_workers=max_workers(),
+               router_class=RoundRobinRouter, sign_data=False, unix_socket=False):
+        return cls(host, pull_port, push_port,
+                   num_workers, router_class, sign_data, unix_socket)
+
 
 class ZMQQueueSupervisor(ZMQSupervisor):
 
@@ -263,6 +269,12 @@ class ZMQQueueSupervisor(ZMQSupervisor):
         self._bind_sockets()
         asyncio.ensure_future(self._start())
         self._loop.run_forever()
+
+    @classmethod
+    def create(cls, host, pull_port, push_port, num_workers=max_workers(),
+               worker_class=ProcessQueueWorker, sign_data=False, unix_socket=False):
+        return cls(host, pull_port, push_port,
+                   num_workers, worker_class, sign_data, unix_socket)
 
 
 class RedisQueueSupervisor(BaseSupervisor):
@@ -328,6 +340,11 @@ class RedisQueueSupervisor(BaseSupervisor):
                 break
             self._server.send(response)
 
+    @classmethod
+    def create(cls, host, port, db, name, num_workers=max_workers(),
+               worker_class=ProcessQueueWorker, sign_data=False):
+        return cls(host, port, db, name, num_workers, worker_class, sign_data)
+
 
 class RedisActorSupervisor(BaseSupervisor):
 
@@ -387,6 +404,11 @@ class RedisActorSupervisor(BaseSupervisor):
             self._responses.route(res)
             self._log.info("Routed")
         self._done.set()
+
+    @classmethod
+    def create(cls, host, port, db, name, num_workers=max_workers(),
+               router_class=RoundRobinRouter, sign_data=False):
+        return cls(host, port, db, name, num_workers, router_class, sign_data)
 
 
 class RabbitMQQueueSupervisor(BaseSupervisor):
@@ -450,6 +472,11 @@ class RabbitMQQueueSupervisor(BaseSupervisor):
                 break
             self._server.send(response)
 
+    @classmethod
+    def create(cls, host, port, name, num_workers=max_workers(),
+               worker_class=ProcessQueueWorker, sign_data=False):
+        return cls(host, port, name, num_workers, worker_class, sign_data)
+
 
 class RabbitMQActorSupervisor(BaseSupervisor):
 
@@ -510,6 +537,11 @@ class RabbitMQActorSupervisor(BaseSupervisor):
             self._log.info("Routed")
         self._done.set()
 
+    @classmethod
+    def create(cls, host, port, name, num_workers=max_workers(),
+               router_class=RoundRobinRouter, sign_data=False):
+        return cls(host, port, name, num_workers, router_class, sign_data)
+
 
 class Supervisors:
 
@@ -550,3 +582,33 @@ class Supervisors:
         except KeyboardInterrupt:
             # Clean up should be placed
             pass
+
+
+class SupervisorFactory:
+
+    def __init__(self):
+        self._builders = {}
+
+    def register_builder(self, key, builder):
+        self._builders[key] = builder
+
+    def create(self, key, **kwargs):
+        builder = self._builders.get(key)
+        if not builder:
+            raise ValueError(key)
+        return builder(**kwargs)
+
+
+supervisor_factory = SupervisorFactory()
+supervisor_factory.register_builder('ZMQ_ACTOR_SUPERVISOR',
+                                    ZMQActorSupervisor.create)
+supervisor_factory.register_builder('ZMQ_QUEUE_SUPERVISOR',
+                                    ZMQQueueSupervisor.create)
+supervisor_factory.register_builder('REDIS_QUEUE_SUPERVISOR',
+                                    RedisQueueSupervisor.create)
+supervisor_factory.register_builder('REDIS_ACTOR_SUPERVISOR',
+                                    RedisActorSupervisor.create)
+supervisor_factory.register_builder('AMQP_QUEUE_SUPERVISOR',
+                                    RabbitMQQueueSupervisor.create)
+supervisor_factory.register_builder('AMQP_ACTOR_SUPERVISOR',
+                                    RabbitMQActorSupervisor.create)

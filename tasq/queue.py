@@ -4,18 +4,12 @@ tasq.queue.py
 The main client module, provides interfaces to instantiate queues
 """
 
-import os
 from queue import Queue
 from threading import Thread
 from urllib.parse import urlparse
-from collections import namedtuple
 from tasq.remote.backends.redis import RedisStore
 from tasq.remote.client import (ZMQTasqClient, RedisTasqClient,
                                 RabbitMQTasqClient, TasqFuture)
-
-
-def init_client(client, host, port, *args, **kwargs):
-    return client(host, port, *args, **kwargs)
 
 
 backends = {
@@ -65,8 +59,11 @@ class TasqQueue:
             assert url.scheme in {'redis', 'zmq', 'amqp', 'unix', 'tcp'}, \
                 f"Unsupported {url.scheme}"
             self._backend = backends[scheme].from_url(backend, sign_data)
-        else:
+        elif isinstance(backend,
+                        (ZMQTasqClient, RabbitMQTasqClient, RedisTasqClient)):
             self._backend = backend
+        else:
+            print("Unsupported backend", backend)
         # Handle only redis as a backend store for now
         if store:
             urlstore = urlparse(store)
@@ -95,7 +92,7 @@ class TasqQueue:
             self._results.put(tasq_result)
         return tasq_result
 
-    def pub_blocking(self, func, *args, **kwargs):
+    def put_blocking(self, func, *args, **kwargs):
         tasq_result = self._backend.schedule_blocking(func, *args, **kwargs)
         if self._store:
             self._results.put(tasq_result)

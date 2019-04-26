@@ -4,7 +4,8 @@ tasq.logger.py
 Provides utility method to spawn a logger, file handler are capped by default.
 """
 
-from __future__ import absolute_import, division, print_function, unicode_literals
+from __future__ import (absolute_import, division,
+                        print_function, unicode_literals)
 
 import os
 import errno
@@ -14,7 +15,7 @@ from logging.handlers import RotatingFileHandler
 
 DEFAULT_LOGSIZE = int(os.getenv('LOGSIZE', '5242880'))
 DEFAULT_LOGPATH = os.getenv('LOGPATH', '/tmp/log/tasq')
-DEFAULT_FORMAT = os.getenv('LOGFMT', '%(name)s - %(message)s')
+DEFAULT_FORMAT = os.getenv('LOGFMT', '%(asctime)s - %(name)s: %(message)s')
 DEFAULT_LOGLEVEL = os.getenv('LOGLVL', 'INFO')
 
 
@@ -61,32 +62,39 @@ class MakeCappedFileHandler(RotatingFileHandler):
                                      backup_count, encoding, delay)
 
 
-def get_logger(name, loglevel=DEFAULT_LOGLEVEL,
-               fmt=DEFAULT_FORMAT, logpath=DEFAULT_LOGPATH):
+class GlobalLogger:
 
-    # create module logger
-    logger = logging.getLogger(name)
-    logger.setLevel(LOGLVLMAP[loglevel])
+    def __init__(self, loglevel=DEFAULT_LOGLEVEL,
+                 fmt=DEFAULT_FORMAT, logpath=DEFAULT_LOGPATH):
+        self.loglevel = loglevel
+        self.fmt = fmt
+        self.logpath = logpath
 
-    if not logger.handlers:
-        # create file handler which logs even debug messages
-        fh = MakeCappedFileHandler(os.path.join(logpath, f'{name}.log'))
-        fh.setLevel(logging.DEBUG)
+    def get_logger(self, name):
+        # create module logger
+        logger = logging.getLogger(name)
+        logger.setLevel(LOGLVLMAP[self.loglevel])
 
-        # create console handler with a higher log level
-        ch = logging.StreamHandler()
-        ch.setLevel(LOGLVLMAP[loglevel])
+        if not logger.handlers:
+            # create file handler which logs even debug messages
+            fh = MakeCappedFileHandler(os.path.join(self.logpath, f'{name}.log'))
+            fh.setLevel(logging.DEBUG)
 
-        # create formatter and add it to the handlers
-        formatter = logging.Formatter(fmt)
-        fh.setFormatter(logging.Formatter('%(asctime)s - ' + fmt))
-        ch.setFormatter(formatter)
+            # create console handler with a higher log level
+            ch = logging.StreamHandler()
+            ch.setLevel(LOGLVLMAP[self.loglevel])
 
-        # add the handlers to the logger
-        logger.addHandler(fh)
-        logger.addHandler(ch)
+            # create formatter and add it to the handlers
+            formatter = logging.Formatter(self.fmt, '%Y-%m-%d %H:%M:%S')
+            fh.setFormatter(formatter)
+            ch.setFormatter(formatter)
 
-    return logger
+            # add the handlers to the logger
+            logger.addHandler(fh)
+            logger.addHandler(ch)
+
+        return logger
 
 
-log = get_logger(__name__)
+logger = GlobalLogger()
+get_logger = logger.get_logger
