@@ -77,6 +77,9 @@ class TasqQueue:
         # Connect with the backend
         self._backend.connect()
 
+    def __len__(self):
+        return len(self.pending_jobs())
+
     def _store_results(self):
         while True:
             tasqfuture = self._results.get()

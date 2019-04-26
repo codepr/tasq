@@ -8,7 +8,6 @@ pool of worker actors
 from __future__ import absolute_import, division, print_function, unicode_literals
 
 import os
-import signal
 import asyncio
 from threading import Thread, Event
 from abc import ABCMeta, abstractmethod
@@ -114,8 +113,6 @@ class ZMQSupervisor(BaseSupervisor, metaclass=ABCMeta):
         super().__init__(host, num_workers=num_workers, signkey=signkey)
         # Event loop
         self._loop = asyncio.get_event_loop()
-        # Handling loop exit
-        self._loop.add_signal_handler(signal.SIGINT, self.stop)
 
     @property
     def push_port(self):
@@ -298,7 +295,6 @@ class RedisQueueSupervisor(BaseSupervisor):
         self._response_thread = Thread(target=self._respond, daemon=True)
         self._response_thread.start()
         self._run = True
-        self._done = Event()
         self._log.info("Worker type: %s", worker_class.__name__)
 
     @property
@@ -314,7 +310,6 @@ class RedisQueueSupervisor(BaseSupervisor):
     def stop(self):
         self._log.info("\nStopping..")
         self._run = False
-        self._done.wait()
         # Use a poison pill to stop the loop
         self._jobqueue.shutdown()
         self._response_thread.join()
@@ -327,7 +322,6 @@ class RedisQueueSupervisor(BaseSupervisor):
                 continue
             self._log.info("Received job")
             self._jobqueue.add_job(job)
-        self._done.set()
 
     def _respond(self):
         """Spin a loop and respond to client with whatever results arrive in
@@ -374,9 +368,6 @@ class RedisActorSupervisor(BaseSupervisor):
             response_actor=self._responses
         )
         self._log.info("Worker type: Actor")
-        self._done = Event()
-        signal.signal(signal.SIGINT, self.stop)
-        signal.signal(signal.SIGTERM, self.stop)
 
     @property
     def name(self):
@@ -391,7 +382,6 @@ class RedisActorSupervisor(BaseSupervisor):
     def stop(self):
         self._log.info("\nStopping..")
         self._run = False
-        self._done.wait()
 
     def serve_forever(self):
         """Receive jobs from clients with polling"""
@@ -403,7 +393,6 @@ class RedisActorSupervisor(BaseSupervisor):
             res = self._workers.route(job)
             self._responses.route(res)
             self._log.info("Routed")
-        self._done.set()
 
     @classmethod
     def create(cls, host, port, db, name, num_workers=max_workers(),
@@ -431,7 +420,6 @@ class RabbitMQQueueSupervisor(BaseSupervisor):
         self._response_thread = Thread(target=self._respond, daemon=True)
         self._response_thread.start()
         self._run = True
-        self._done = Event()
         self._log.info("Worker type: %s", worker_class.__name__)
 
     @property
@@ -447,7 +435,6 @@ class RabbitMQQueueSupervisor(BaseSupervisor):
     def stop(self):
         self._log.info("\nStopping..")
         self._run = False
-        self._done.wait()
         self._jobqueue.shutdown()
         self._response_thread.join()
 
@@ -459,7 +446,6 @@ class RabbitMQQueueSupervisor(BaseSupervisor):
                 continue
             self._log.info("Received job")
             self._jobqueue.add_job(job)
-        self._done.set()
 
     def _respond(self):
         """Spin a loop and respond to client with whatever results arrive in
@@ -505,9 +491,6 @@ class RabbitMQActorSupervisor(BaseSupervisor):
             response_actor=self._responses
         )
         self._log.info("Worker type: Actor")
-        self._done = Event()
-        signal.signal(signal.SIGINT, self.stop)
-        signal.signal(signal.SIGTERM, self.stop)
 
     @property
     def name(self):
@@ -523,7 +506,6 @@ class RabbitMQActorSupervisor(BaseSupervisor):
         self._log.info("\nStopping..")
         self._run = False
         self._server.close()
-        self._done.wait()
 
     def serve_forever(self):
         """Receive jobs from clients with polling"""
@@ -535,7 +517,6 @@ class RabbitMQActorSupervisor(BaseSupervisor):
             res = self._workers.route(job)
             self._responses.route(res)
             self._log.info("Routed")
-        self._done.set()
 
     @classmethod
     def create(cls, host, port, name, num_workers=max_workers(),

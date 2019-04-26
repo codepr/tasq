@@ -219,3 +219,6 @@ class BackendSocket:
         if zipped_result and unpickle:
             return decompress_and_unpickle(zipped_result)
         return zipped_result
+
+    def close(self):
+        self._backend.close()

@@ -5,7 +5,8 @@ This module contains all routers used as workers for all tasks incoming from
 remote calls.
 """
 
-from __future__ import absolute_import, division, print_function, unicode_literals
+from __future__ import (absolute_import, division,
+                        print_function, unicode_literals)
 
 from abc import ABCMeta, abstractmethod
 
@@ -25,6 +26,7 @@ class Router(metaclass=ABCMeta):
     :type func_name: str or 'submit'
     :param func_name: The name of the method that must be called after the
                       message has been routed.
+
     """
 
     def __init__(self, workers, func_name=u'submit', *args, **kwargs):
@@ -51,7 +53,7 @@ class Router(metaclass=ABCMeta):
     @abstractmethod
     def _route_message(self, msg):
         """To be defined on subclass"""
-        pass
+        raise NotImplementedError
 
     def route(self, msg):
         """Call `_route_message` private method, call function directly in case

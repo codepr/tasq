@@ -90,9 +90,11 @@ def start_worker(supervisor_type, worker_type, host, **kwargs):
         s_type = supervisors[worker_type][supervisor_type]
     except KeyError:
         raise UnknownSupervisorException()
-    else:
+    try:
         supervisor = supervisor_factory.create(s_type, host=host, **kwargs)
         supervisor.serve_forever()
+    except KeyboardInterrupt:
+        supervisor.stop()
 
 
 def main():

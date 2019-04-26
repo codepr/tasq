@@ -140,7 +140,8 @@ class TimedActor(Actor):
         self._response_actor = response_actor or self._ctx.actor_of(
             ResponseActor, 'TimedActor - ResponseActor'
         )
-        self._response_actor.start()
+        if isinstance(self._response_actor, Actor):
+            self._response_actor.start()
         super().__init__(name, ctx)
 
     def submit(self, job, eta):
@@ -205,7 +206,10 @@ class TimedActor(Actor):
             self._log.debug('%s - Timed job %s result = %s',
                             self.name, job.job_id, jobres)
             result.set_result(response)
-            self._response_actor.send(result)
+            if isinstance(self._response_actor, Actor):
+                self._response_actor.send(result)
+            else:
+                self._response_actor.route(result)
             self.submit(job, str(job.delay) + 's')
 
 
