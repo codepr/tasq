@@ -55,19 +55,19 @@ class BaseTasqClient(metaclass=ABCMeta):
     :type port: int
     :param port: The port associated with the host param
 
-    :type sign_data: bool or False
-    :param sign_data: Boolean flag, sign bytes passing around through sockets
+    :type signkey: bool or False
+    :param signkey: Boolean flag, sign bytes passing around through sockets
                       if True
 
     """
 
-    def __init__(self, host, port, sign_data=False):
+    def __init__(self, host, port, signkey=None):
         # Host address of a remote supervisor to connect to
         self._host = host
         # Port for push side (outgoing) of the communication channel
         self._port = port
         # Send digital signed data
-        self._sign_data = sign_data
+        self._signkey = signkey
         # Client reference, set up the communication with a Supervisor
         self._client = self._make_client()
         # Connection flag
@@ -226,8 +226,8 @@ class ZMQTasqClient(BaseTasqClient):
     :type plport: int or None
     :param plport: The pull port to retrieve bytes from
 
-    :type sign_data: bool or False
-    :param sign_data: Boolean flag, sign bytes passing around through sockets
+    :type signkey: bool or False
+    :param signkey: Boolean flag, sign bytes passing around through sockets
                       if True
 
     :type unix_socket: bool or False
@@ -238,13 +238,13 @@ class ZMQTasqClient(BaseTasqClient):
 
     __extraparams__ = {'plport'}
 
-    def __init__(self, host, port, plport=None, sign_data=False, unix_socket=False):
+    def __init__(self, host, port, plport=None, signkey=None, unix_socket=False):
         self._plport = plport or port + 1
         # Unix socket flag, if set to true, unix sockets for interprocess
         # communication will be used and ports will be used to differentiate
         # push and pull channel
         self._unix_socket = unix_socket
-        super().__init__(host, port, sign_data)
+        super().__init__(host, port, signkey)
 
     @property
     def plport(self):
@@ -259,7 +259,7 @@ class ZMQTasqClient(BaseTasqClient):
     def _make_client(self):
         return ConnectionFactory \
             .make_client(self.host, self.port, self.plport,
-                         self._sign_data, self._unix_socket)
+                         self._signkey, self._unix_socket)
 
     def _gather_results(self):
         """Gathering subroutine, must be run in another thread to concurrently
@@ -279,17 +279,17 @@ class ZMQTasqClient(BaseTasqClient):
                 self._log.error("Can't update result: key not found")
 
     @classmethod
-    def from_url(cls, url, sign_data=False):
+    def from_url(cls, url, signkey=None):
         u = urlparse(url)
         scheme = u.scheme or 'zmq'
         assert scheme in ('zmq', 'unix', 'tcp'), f"Unsupported {scheme}"
-        extras = {t.split('=')[0]: t.split('=')[1] for t in u.query.split('?')}
+        extras = {t.split('=')[0]: t.split('=')[1] for t in u.query.split('?') if t}
         extras = {k: v for k, v in extras.items() if k in cls.__extraparams__}
         conn_args = {
             'host': u.hostname or '127.0.0.1',
             'port': u.port or 9000,
             'plport': int(extras.get('plport', 0)),
-            'sign_data': sign_data,
+            'signkey': signkey,
             'unix_socket': scheme == 'unix'
         }
         return cls(**conn_args)
@@ -314,8 +314,8 @@ class RedisTasqClient(BaseTasqClient):
     :type name: str or redis-queue
     :param name: The name of the redis queue
 
-    :type sign_data: bool or False
-    :param sign_data: Boolean flag, sign bytes passing around through sockets
+    :type signkey: bool or False
+    :param signkey: Boolean flag, sign bytes passing around through sockets
                       if True
 
     """
@@ -323,10 +323,10 @@ class RedisTasqClient(BaseTasqClient):
     __extraparams__ = {'db', 'name'}
 
     def __init__(self, host='localhost', port=6379,
-                 db=0, name='redis-queue', sign_data=False):
+                 db=0, name='redis-queue', signkey=None):
         self._db = db
         self._name = name
-        super().__init__(host, port, sign_data)
+        super().__init__(host, port, signkey)
 
     @property
     def name(self):
@@ -340,7 +340,7 @@ class RedisTasqClient(BaseTasqClient):
     def _make_client(self):
         return ConnectionFactory \
             .make_redis_client(self.host, self.port, self._db,
-                               self._name, secure=self._sign_data)
+                               self._name, signkey=self._signkey)
 
     def _gather_results(self):
         """Gathering subroutine, must be run in another thread to concurrently
@@ -378,18 +378,18 @@ class RedisTasqClient(BaseTasqClient):
             self._is_connected = False
 
     @classmethod
-    def from_url(cls, url, sign_data=False):
+    def from_url(cls, url, signkey=None):
         u = urlparse(url)
         scheme = u.scheme or 'redis'
         assert scheme == 'redis', f"Unsupported {scheme}"
-        extras = {t.split('=')[0]: t.split('=')[1] for t in u.query.split('?')}
+        extras = {t.split('=')[0]: t.split('=')[1] for t in u.query.split('?') if t}
         extras = {k: v for k, v in extras.items() if k in cls.__extraparams__}
         conn_args = {
             'host': u.hostname or 'localhost',
             'port': u.port or 6379,
             'db': int(extras.get('db', 0)),
             'name': extras.get('name', 'redis-queue'),
-            'sign_data': sign_data
+            'signkey': signkey
         }
         return cls(**conn_args)
 
@@ -410,8 +410,8 @@ class RabbitMQTasqClient(BaseTasqClient):
     :type name: str or amqp-queue
     :param name: The name of the RabbitMQ queue
 
-    :type sign_data: bool or False
-    :param sign_data: Boolean flag, sign bytes passing around through sockets
+    :type signkey: bool or False
+    :param signkey: Boolean flag, sign bytes passing around through sockets
                       if True
 
     """
@@ -419,9 +419,9 @@ class RabbitMQTasqClient(BaseTasqClient):
     __extraparams__ = {'name'}
 
     def __init__(self, host='localhost', port=5672,
-                 name='amqp-queue', sign_data=False):
+                 name='amqp-queue', signkey=None):
         self._name = name
-        super().__init__(host, port, sign_data)
+        super().__init__(host, port, signkey)
 
     @property
     def name(self):
@@ -435,7 +435,7 @@ class RabbitMQTasqClient(BaseTasqClient):
     def _make_client(self):
         return ConnectionFactory \
             .make_rabbitmq_client(self.host, self.port, 'sender',
-                                  self._name, secure=self._sign_data)
+                                  self._name, signkey=self._signkey)
 
     def _gather_results(self):
         """Gathering subroutine, must be run in another thread to concurrently
@@ -443,6 +443,8 @@ class RabbitMQTasqClient(BaseTasqClient):
         """
         while True:
             job_result = self._client.recv_result()
+            if not job_result:
+                continue
             self._log.debug("Gathered result: %s", job_result)
             try:
                 self._results[job_result.name].set_result(job_result)
@@ -468,17 +470,17 @@ class RabbitMQTasqClient(BaseTasqClient):
             self._is_connected = False
 
     @classmethod
-    def from_url(cls, url, sign_data=False):
+    def from_url(cls, url, signkey=None):
         u = urlparse(url)
         scheme = u.scheme or 'amqp'
         assert scheme == 'amqp', f"Unsupported {scheme}"
-        extras = {t.split('=')[0]: t.split('=')[1] for t in u.query.split('?')}
+        extras = {t.split('=')[0]: t.split('=')[1] for t in u.query.split('?') if t}
         extras = {k: v for k, v in extras.items() if k in cls.__extraparams__}
         conn_args = {
             'host': u.hostname or 'localhost',
             'port': u.port or 5672,
             'name': extras.get('name', 'amqp-queue'),
-            'sign_data': sign_data
+            'signkey': signkey
         }
         return cls(**conn_args)
 

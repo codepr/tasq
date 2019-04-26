@@ -47,21 +47,21 @@ class BaseSupervisor(metaclass=ABCMeta):
                         machine where the Supervisor is started), fallback to
                         a maximum defined by the (nr. of core x 2) + 1
 
-    :type sign_data: bool or False
-    :param sign_data: A boolean controlling wether the serialized jobs should
+    :type signkey: bool or False
+    :param signkey: A boolean controlling wether the serialized jobs should
                       be salted and signed or just plain bytearrays.
 
     """
 
     def __init__(self, host, port=9000,
-                 num_workers=max_workers(), sign_data=False):
+                 num_workers=max_workers(), signkey=None):
         # Host address to bind sockets to
         self._host = host
         self._port = port
         # Number of workers
         self._num_workers = num_workers
         # Send digital signed data
-        self._sign_data = sign_data
+        self._signkey = signkey
         self._log = get_logger(f'{__name__}-{os.getpid()}')
         self._server = self._init_server()
 
@@ -78,8 +78,8 @@ class BaseSupervisor(metaclass=ABCMeta):
         return self._num_workers
 
     @property
-    def sign_data(self):
-        return self._sign_data
+    def signkey(self):
+        return self._signkey
 
     @abstractmethod
     def _init_server(self):
@@ -102,7 +102,7 @@ class ZMQSupervisor(BaseSupervisor, metaclass=ABCMeta):
     """
 
     def __init__(self, host, pull_port, push_port, num_workers=max_workers(),
-                 sign_data=False, unix_socket=False):
+                 signkey=None, unix_socket=False):
         # Port for push side (outgoing) of the communication channel
         self._push_port = push_port
         # Port for pull side (ingoing) of the communication channel
@@ -111,7 +111,7 @@ class ZMQSupervisor(BaseSupervisor, metaclass=ABCMeta):
         # communication will be used and ports will be used to differentiate
         # push and pull channel
         self._unix_socket = unix_socket
-        super().__init__(host, num_workers=num_workers, sign_data=sign_data)
+        super().__init__(host, num_workers=num_workers, signkey=signkey)
         # Event loop
         self._loop = asyncio.get_event_loop()
         # Handling loop exit
@@ -133,7 +133,7 @@ class ZMQSupervisor(BaseSupervisor, metaclass=ABCMeta):
         """Init the server placeholder"""
         return ConnectionFactory.make_server(
             self.host, self.push_port, self.pull_port,
-            self.sign_data, self.unix_socket
+            self.signkey, self.unix_socket
         )
 
     def _bind_sockets(self):
@@ -176,8 +176,8 @@ class ZMQActorSupervisor(ZMQSupervisor):
     """
 
     def __init__(self, host, pull_port, push_port, num_workers=max_workers(),
-                 router_class=RoundRobinRouter, sign_data=False, unix_socket=False):
-        super().__init__(host, pull_port, push_port, num_workers, sign_data, unix_socket)
+                 router_class=RoundRobinRouter, signkey=None, unix_socket=False):
+        super().__init__(host, pull_port, push_port, num_workers, signkey, unix_socket)
         # Routing type
         self._router_class = router_class
         # Worker's ActorSystem
@@ -211,9 +211,9 @@ class ZMQActorSupervisor(ZMQSupervisor):
 
     @classmethod
     def create(cls, host, pull_port, push_port, num_workers=max_workers(),
-               router_class=RoundRobinRouter, sign_data=False, unix_socket=False):
+               router_class=RoundRobinRouter, signkey=None, unix_socket=False):
         return cls(host, pull_port, push_port,
-                   num_workers, router_class, sign_data, unix_socket)
+                   num_workers, router_class, signkey, unix_socket)
 
 
 class ZMQQueueSupervisor(ZMQSupervisor):
@@ -224,8 +224,8 @@ class ZMQQueueSupervisor(ZMQSupervisor):
     """
 
     def __init__(self, host, pull_port, push_port, num_workers=max_workers(),
-                 worker_class=ProcessQueueWorker, sign_data=False, unix_socket=False):
-        super().__init__(host, pull_port, push_port, num_workers, sign_data, unix_socket)
+                 worker_class=ProcessQueueWorker, signkey=None, unix_socket=False):
+        super().__init__(host, pull_port, push_port, num_workers, signkey, unix_socket)
         # Workers class type
         self._worker_class = worker_class
         # Job queue passed in to workers
@@ -272,9 +272,9 @@ class ZMQQueueSupervisor(ZMQSupervisor):
 
     @classmethod
     def create(cls, host, pull_port, push_port, num_workers=max_workers(),
-               worker_class=ProcessQueueWorker, sign_data=False, unix_socket=False):
+               worker_class=ProcessQueueWorker, signkey=None, unix_socket=False):
         return cls(host, pull_port, push_port,
-                   num_workers, worker_class, sign_data, unix_socket)
+                   num_workers, worker_class, signkey, unix_socket)
 
 
 class RedisQueueSupervisor(BaseSupervisor):
@@ -285,10 +285,10 @@ class RedisQueueSupervisor(BaseSupervisor):
     """
 
     def __init__(self, host, port, db, name, num_workers=max_workers(),
-                 worker_class=ProcessQueueWorker, sign_data=False):
+                 worker_class=ProcessQueueWorker, signkey=None):
         self._db = db
         self._name = name
-        super().__init__(host, port, num_workers, sign_data)
+        super().__init__(host, port, num_workers, signkey)
         # Workers class type
         self._worker_class = worker_class
         # Job queue passed in to workers
@@ -308,7 +308,7 @@ class RedisQueueSupervisor(BaseSupervisor):
     def _init_server(self):
         return ConnectionFactory.make_redis_client(
             self._host, self._port, self._db,
-            self._name, secure=self._sign_data
+            self._name, signkey=self._signkey
         )
 
     def stop(self):
@@ -342,17 +342,17 @@ class RedisQueueSupervisor(BaseSupervisor):
 
     @classmethod
     def create(cls, host, port, db, name, num_workers=max_workers(),
-               worker_class=ProcessQueueWorker, sign_data=False):
-        return cls(host, port, db, name, num_workers, worker_class, sign_data)
+               worker_class=ProcessQueueWorker, signkey=None):
+        return cls(host, port, db, name, num_workers, worker_class, signkey)
 
 
 class RedisActorSupervisor(BaseSupervisor):
 
     def __init__(self, host, port, db, name, num_workers=max_workers(),
-                 router_class=RoundRobinRouter, sign_data=False):
+                 router_class=RoundRobinRouter, signkey=None):
         self._db = db
         self._name = name
-        super().__init__(host, port, num_workers, sign_data)
+        super().__init__(host, port, num_workers, signkey)
         # Routing type
         self._router_class = router_class
         # Worker's ActorSystem
@@ -385,7 +385,7 @@ class RedisActorSupervisor(BaseSupervisor):
     def _init_server(self):
         return ConnectionFactory.make_redis_client(
             self._host, self._port, self._db,
-            self._name, secure=self._sign_data
+            self._name, signkey=self._signkey
         )
 
     def stop(self):
@@ -407,8 +407,8 @@ class RedisActorSupervisor(BaseSupervisor):
 
     @classmethod
     def create(cls, host, port, db, name, num_workers=max_workers(),
-               router_class=RoundRobinRouter, sign_data=False):
-        return cls(host, port, db, name, num_workers, router_class, sign_data)
+               router_class=RoundRobinRouter, signkey=None):
+        return cls(host, port, db, name, num_workers, router_class, signkey)
 
 
 class RabbitMQQueueSupervisor(BaseSupervisor):
@@ -419,9 +419,9 @@ class RabbitMQQueueSupervisor(BaseSupervisor):
     """
 
     def __init__(self, host, port, name, num_workers=max_workers(),
-                 worker_class=ProcessQueueWorker, sign_data=False):
+                 worker_class=ProcessQueueWorker, signkey=None):
         self._name = name
-        super().__init__(host, port, num_workers, sign_data)
+        super().__init__(host, port, num_workers, signkey)
         # Workers class type
         self._worker_class = worker_class
         # Job queue passed in to workers
@@ -441,7 +441,7 @@ class RabbitMQQueueSupervisor(BaseSupervisor):
     def _init_server(self):
         return ConnectionFactory.make_rabbitmq_client(
             self._host, self._port, 'receiver',
-            self._name, secure=self._sign_data
+            self._name, signkey=self._signkey
         )
 
     def stop(self):
@@ -474,16 +474,16 @@ class RabbitMQQueueSupervisor(BaseSupervisor):
 
     @classmethod
     def create(cls, host, port, name, num_workers=max_workers(),
-               worker_class=ProcessQueueWorker, sign_data=False):
-        return cls(host, port, name, num_workers, worker_class, sign_data)
+               worker_class=ProcessQueueWorker, signkey=None):
+        return cls(host, port, name, num_workers, worker_class, signkey)
 
 
 class RabbitMQActorSupervisor(BaseSupervisor):
 
     def __init__(self, host, port, name, num_workers=max_workers(),
-                 router_class=RoundRobinRouter, sign_data=False):
+                 router_class=RoundRobinRouter, signkey=None):
         self._name = name
-        super().__init__(host, port, num_workers, sign_data)
+        super().__init__(host, port, num_workers, signkey)
         # Routing type
         self._router_class = router_class
         # Worker's ActorSystem
@@ -516,7 +516,7 @@ class RabbitMQActorSupervisor(BaseSupervisor):
     def _init_server(self):
         return ConnectionFactory.make_rabbitmq_client(
             self._host, self._port, 'receiver',
-            self._name, secure=self._sign_data
+            self._name, signkey=self._signkey
         )
 
     def stop(self):
@@ -539,19 +539,19 @@ class RabbitMQActorSupervisor(BaseSupervisor):
 
     @classmethod
     def create(cls, host, port, name, num_workers=max_workers(),
-               router_class=RoundRobinRouter, sign_data=False):
-        return cls(host, port, name, num_workers, router_class, sign_data)
+               router_class=RoundRobinRouter, signkey=None):
+        return cls(host, port, name, num_workers, router_class, signkey)
 
 
 class Supervisors:
 
     """Class to handle a pool of supervisors on the same node"""
 
-    def __init__(self, binds, sign_data=False, unix_socket=False):
+    def __init__(self, binds, signkey=None, unix_socket=False):
         # List of tuples (host, pport, plport) to bind to
         self._binds = binds
         # Digital sign data before send an receive it
-        self._sign_data = sign_data
+        self._signkey = signkey
         # Unix socket flag, if set to true, unix sockets for interprocess
         # communication will be used and ports will be used to differentiate
         # push and pull channel
@@ -561,7 +561,7 @@ class Supervisors:
         self._init_binds()
 
     def _serve_supervisor(self, host, psh_port, pl_port):
-        m = ZMQActorSupervisor(host, psh_port, pl_port, sign_data=self._sign_data,
+        m = ZMQActorSupervisor(host, psh_port, pl_port, signkey=self._signkey,
                                unix_socket=self._unix_socket)
         m.serve_forever()
 

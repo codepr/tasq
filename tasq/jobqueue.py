@@ -81,7 +81,7 @@ class JobQueue(JoinableQueue):
 
         :return: A `tasq.Job` object
         """
-        return self.get(timeout)
+        return self.get(timeout=timeout)
 
     def get_result(self, block=True, timeout=None):
         return self._completed_jobs.get(block, timeout)

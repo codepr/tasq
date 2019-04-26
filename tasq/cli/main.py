@@ -65,7 +65,7 @@ def parse_arguments():
         nargs='?'
     )
     parser.add_argument(
-        '--shared-key', '-sk',
+        '--signkey',
         help='The shared key to use to sign byte streams between clients and '
         'supervisors',
         nargs='?'
@@ -99,7 +99,7 @@ def main():
     args = parse_arguments()
     conf = get_config(args.conf)
     logger.loglevel = args.log_level or conf['log_level']
-    sign_data = conf['sign_data']
+    signkey = args.signkey or conf['signkey']
     unix_socket = conf['unix_socket']
     num_workers = args.num_workers or conf['num_workers']
     worker_type = args.worker_type or 'actor'
@@ -108,16 +108,16 @@ def main():
         push_port = args.plport or conf['zmq']['push_port']
         pull_port = args.port or conf['zmq']['pull_port']
         start_worker('zmq', worker_type, addr, push_port=push_port,
-                     pull_port=pull_port, sign_data=sign_data,
-                     unix_socket=unix_socket)
+                     pull_port=pull_port, signkey=signkey,
+                     num_workers=num_workers, unix_socket=unix_socket)
     elif args.subcommand == 'redis-worker':
         port = args.port or conf['redis']['port']
         db = args.db or conf['redis']['db']
         name = args.name or conf['redis']['name']
-        start_worker('redis', worker_type, addr, port,
-                     db=db, name=name, sign_data=sign_data)
+        start_worker('redis', worker_type, addr, port=port, db=db,
+                     name=name, num_workers=num_workers, signkey=signkey)
     elif args.subcommand == 'rabbitmq-worker':
         port = args.port or conf['rabbitmq']['port']
         name = args.name or conf['rabbitmq']['name']
-        start_worker('rabbitmq', worker_type, addr,
-                     port, name=name, sign_data=sign_data)
+        start_worker('rabbitmq', worker_type, addr, port=port,
+                     name=name, num_workers=num_workers, signkey=signkey)

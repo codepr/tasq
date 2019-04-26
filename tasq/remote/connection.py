@@ -23,11 +23,11 @@ class Server(metaclass=ABCMeta):
     data
     """
 
-    def __init__(self, host, push_port, pull_port, secure=False):
+    def __init__(self, host, push_port, pull_port, signkey=None):
         # Host address to bind sockets to
         self._host = host
         # Send digital signed data
-        self._secure = secure
+        self._signkey = signkey
         # Port for pull side (ingoing) of the communication channel
         self._pull_port = pull_port
         # Port for push side (outgoing) of the communication channel
@@ -92,13 +92,10 @@ class MixedServer(Server):
         self._ctx['async'].destroy()
 
     def send(self, data, flags=0):
-        """Send data through the PUSH socket, if a secure flag is set it sign
+        """Send data through the PUSH socket, if a signkey flag is set it sign
         it before sending
         """
-        if self._secure is False:
-            self._push_socket.send_data(data, flags)
-        else:
-            self._push_socket.send_signed(data, flags)
+        self._push_socket.send_data(data, flags, self._signkey)
 
     async def poll(self):
         events = await self._poller.poll()
@@ -107,12 +104,10 @@ class MixedServer(Server):
         return None
 
     async def recv(self, unpickle=True, flags=0):
-        """Asynchronous receive data from the PULL socket, if a secure flag is
+        """Asynchronous receive data from the PULL socket, if a signkey flag is
         set it checks for integrity of the received data
         """
-        if self._secure is False:
-            return await self._pull_socket.recv_data(unpickle, flags)
-        return await self._pull_socket.socket.recv_signed(unpickle, flags)
+        return await self._pull_socket.recv_data(unpickle, flags, self._signkey)
 
 
 class AsyncServer(Server):
@@ -123,21 +118,16 @@ class AsyncServer(Server):
         self._pull_socket = self._ctx.socket(zmq.PULL)
 
     async def send(self, data, unpickle=True, flags=0):
-        """Send data through the PUSH socket, if a secure flag is set it sign
+        """Send data through the PUSH socket, if a signkey flag is set it sign
         it before sending
         """
-        if self._secure is False:
-            await self._push_socket.send_data(data, unpickle, flags)
-        else:
-            await self._push_socket.send_signed(data, unpickle, flags)
+        await self._push_socket.send_data(data, unpickle, flags, self._signkey)
 
     async def recv(self, unpickle=True, flags=0):
-        """Asynchronous receive data from the PULL socket, if a secure flag is
+        """Asynchronous receive data from the PULL socket, if a signkey flag is
         set it checks for integrity of the received data
         """
-        if self._secure is False:
-            return await self._pull_socket.recv_data(unpickle, flags)
-        return await self._pull_socket.socket.recv_signed(unpickle, flags)
+        return await self._pull_socket.recv_data(unpickle, flags, self._signkey)
 
 
 class MixedUnixServer(MixedServer):
@@ -187,11 +177,11 @@ class Connection:
     sockets given the capability to handle cloudpickled data
     """
 
-    def __init__(self, host, push_port, pull_port, secure=False):
+    def __init__(self, host, push_port, pull_port, signkey=None):
         # Host address to bind sockets to
         self._host = host
         # Send digital signed data
-        self._secure = secure
+        self._signkey = signkey
         # Port for pull side (ingoing) of the communication channel
         self._pull_port = pull_port
         # Port for push side (outgoing) of the communication channel
@@ -221,21 +211,16 @@ class Connection:
         self._ctx.destroy()
 
     def send(self, data, flags=0):
-        """Send data through the PUSH socket, if a secure flag is set it sign
+        """Send data through the PUSH socket, if a signkey flag is set it sign
         it before sending
         """
-        if self._secure is False:
-            self._push_socket.send_data(data, flags)
-        else:
-            self._push_socket.send_signed(data, flags)
+        self._push_socket.send_data(data, flags, self._signkey)
 
     def recv(self, unpickle=True, flags=0):
-        """Receive data from the PULL socket, if a secure flag is set it checks
-        for integrity of the received data
+        """Receive data from the PULL socket, if a signkey flag is set it
+        checks for integrity of the received data
         """
-        if self._secure is False:
-            return self._pull_socket.recv_data(unpickle, flags)
-        return self._pull_socket.socket.recv_signed(unpickle, flags)
+        return self._pull_socket.recv_data(unpickle, flags, self._signkey)
 
 
 class UnixConnection(Connection):
@@ -262,37 +247,27 @@ class UnixConnection(Connection):
 
 class BackendConnection:
 
-    def __init__(self, backend, secure=False):
+    def __init__(self, backend, signkey=None):
         self._backend = backend
-        self._secure = secure
+        self._signkey = signkey
 
     def send(self, data):
-        """Send data through the PUSH socket, if a secure flag is set it sign
+        """Send data through the PUSH socket, if a signkey flag is set it sign
         it before sending
         """
-        if self._secure is False:
-            self._backend.send_data(data)
-        else:
-            self._backend.send_signed(data)
+        self._backend.send_data(data, self._signkey)
 
     def send_result(self, result):
-        if self._secure is False:
-            self._backend.send_result_data(result)
-        else:
-            self._backend.send_result_signed(result)
+        self._backend.send_result_data(result, self._signkey)
 
     def recv(self, timeout=None, unpickle=True):
-        """Receive data from the PULL socket, if a secure flag is set it checks
+        """Receive data from the PULL socket, if a signkey flag is set it checks
         for integrity of the received data
         """
-        if self._secure is False:
-            return self._backend.recv_data(timeout, unpickle)
-        return self._backend.recv_signed(timeout, unpickle)
+        return self._backend.recv_data(timeout, unpickle, self._signkey)
 
     def recv_result(self, timeout=None, unpickle=True):
-        if self._secure is False:
-            return self._backend.recv_result_data(timeout, unpickle)
-        return self._backend.recv_result_signed(timeout, unpickle)
+        return self._backend.recv_result_data(timeout, unpickle, self._signkey)
 
     def get_pending_jobs(self):
         return self._backend.get_pending_jobs()
@@ -308,44 +283,44 @@ class ConnectionFactory:
     """
 
     @staticmethod
-    def make_server(host, push_port, pull_port, secure, unix_socket):
+    def make_server(host, push_port, pull_port, signkey, unix_socket):
         """Create and return a MixedServer class, if unix_socket flag is set to
         true, a MixedUnixServer class is istantiated and returned instead.
         """
         if unix_socket is False:
-            return MixedServer(host, push_port, pull_port, secure)
-        return MixedUnixServer(host, push_port, pull_port, secure)
+            return MixedServer(host, push_port, pull_port, signkey)
+        return MixedUnixServer(host, push_port, pull_port, signkey)
 
     @staticmethod
-    def make_asyncserver(host, push_port, pull_port, secure, unix_socket):
+    def make_asyncserver(host, push_port, pull_port, signkey, unix_socket):
         """Create and return a MixedServer class, if unix_socket flag is set to
         true, a MixedUnixServer class is istantiated and returned instead.
         """
         if unix_socket is False:
-            return AsyncServer(host, push_port, pull_port, secure)
-        return AsyncUnixServer(host, push_port, pull_port, secure)
+            return AsyncServer(host, push_port, pull_port, signkey)
+        return AsyncUnixServer(host, push_port, pull_port, signkey)
 
     @staticmethod
-    def make_client(host, push_port, pull_port, secure, unix_socket):
+    def make_client(host, push_port, pull_port, signkey, unix_socket):
         """Create and return a Connection class, if unix_socket flag is set to
         true, a UnixConnection class is istantiated and returned instead.
         """
         if unix_socket is False:
-            return Connection(host, push_port, pull_port, secure)
-        return UnixConnection(host, push_port, pull_port, secure)
+            return Connection(host, push_port, pull_port, signkey)
+        return UnixConnection(host, push_port, pull_port, signkey)
 
     @staticmethod
     def make_redis_client(host, port, db, name,
-                          namespace='queue', secure=False):
+                          namespace='queue', signkey=None):
         return BackendConnection(
             BackendSocket(RedisBackend(host, port, db, name, namespace)),
-            secure=secure
+            signkey=signkey
         )
 
     @staticmethod
     def make_rabbitmq_client(host, port, role, name,
-                             namespace='queue', secure=False):
+                             namespace='queue', signkey=None):
         return BackendConnection(
             BackendSocket(RabbitMQBackend(host, port, role, name, namespace)),
-            secure=secure
+            signkey=signkey
         )

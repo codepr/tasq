@@ -45,20 +45,20 @@ class TasqQueue:
     :type store: str or None
     :param store: An URL to connect to for the results store service
 
-    :type sign_data: bool or False
-    :param sign_data: A boolean flag, sign data with a shared key
+    :type signkey: bool or False
+    :param signkey: A boolean flag, sign data with a shared key
 
     """
 
     def __init__(self, backend=u'zmq://localhost:9000',
-                 store=None, sign_data=False):
+                 store=None, signkey=None):
 
         if isinstance(backend, str):
             url = urlparse(backend)
             scheme = url.scheme or 'zmq'
             assert url.scheme in {'redis', 'zmq', 'amqp', 'unix', 'tcp'}, \
                 f"Unsupported {url.scheme}"
-            self._backend = backends[scheme].from_url(backend, sign_data)
+            self._backend = backends[scheme].from_url(backend, signkey)
         elif isinstance(backend,
                         (ZMQTasqClient, RabbitMQTasqClient, RedisTasqClient)):
             self._backend = backend

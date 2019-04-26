@@ -51,9 +51,11 @@ class RabbitMQBackend:
         channel = self._get_channel()
         channel.basic_qos(prefetch_count=1)
         if self._role == 'receiver':
+            channel.queue_declare(queue=self._queue_name, durable=True)
             channel.basic_consume(queue=self._queue_name,
                                   on_message_callback=self._get_job)
         else:
+            channel.queue_declare(queue=self._result_name, durable=True)
             channel.basic_consume(queue=self._result_name,
                                   on_message_callback=self._get_res)
         channel.start_consuming()
@@ -68,13 +70,13 @@ class RabbitMQBackend:
 
     def get_next_job(self, timeout=None):
         try:
-            return self._jobs.get(timeout)
+            return self._jobs.get(timeout=timeout)
         except queue.Empty:
             return None
 
     def get_available_result(self, timeout=None):
         try:
-            return self._results.get(timeout)
+            return self._results.get(timeout=timeout)
         except queue.Empty:
             return None
 

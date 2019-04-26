@@ -3,6 +3,7 @@
 
 - Refactored CLI commands and logging format
 - Added factory methods to supervisors
+- Fixed bug in rabbitmq backend module
 
 ### 1.1.7
 (Apr 26, 2019)

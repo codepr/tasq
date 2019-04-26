@@ -25,10 +25,9 @@ class TasqConfig(Configuration):
         },
         'rabbitmq': {
             'port': 5672,
-            'name': 'rabbitmq-queue'
+            'name': 'amqp-queue'
         },
-        'sign_data': False,
-        'sharedkey': os.getenv('TASQ_SIGN_KEY', 'put-here-a-shared-key'),
+        'signkey': os.getenv('TASQ_SIGN_KEY', 'put-here-a-sign-key'),
         'unix_socket': False,
         'log_level': 'INFO',
         'num_workers': 4
