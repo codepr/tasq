@@ -55,9 +55,10 @@ class BaseTasqClient(metaclass=ABCMeta):
     :type port: int
     :param port: The port associated with the host param
 
-    :type signkey: bool or False
-    :param signkey: Boolean flag, sign bytes passing around through sockets
-                      if True
+    :type signkey: str or None
+    :param signkey: String representing a sign, marks bytes passing around
+                    through sockets
+
 
     """
 
@@ -127,7 +128,8 @@ class BaseTasqClient(metaclass=ABCMeta):
             self._client.connect()
             self._is_connected = True
             # Start gathering thread
-            self._gatherer.start()
+            if not self._gatherer.is_alive():
+                self._gatherer.start()
             # Check if there are pending requests and in case, empty the queue
             while self._pending:
                 job = self._pending.pop()
