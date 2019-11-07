@@ -4,10 +4,6 @@ tasq.worker.py
 Generic worker, useful to run jobs in a single node with multiple core
 available.
 """
-
-from __future__ import (absolute_import, division,
-                        print_function, unicode_literals)
-
 import sys
 import uuid
 import signal

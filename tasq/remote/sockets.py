@@ -5,8 +5,6 @@ Here are defined some wrapper for ZMQ sockets which can handle serialization
 with cloudpickle
 """
 
-from __future__ import absolute_import, division, print_function, unicode_literals
-
 import hmac
 import struct
 import hashlib

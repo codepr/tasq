@@ -4,9 +4,6 @@ tasq.actors.actorsystem.py
 Contains definitions of a trivial Actor System class, useful to manage actor
 creation and usable as context creator for child actors.
 """
-
-from __future__ import absolute_import, division, print_function, unicode_literals
-
 import uuid
 
 from .routers import actor_pool

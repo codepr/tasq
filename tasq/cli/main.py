@@ -3,9 +3,6 @@ tasq.cli.main.py
 ~~~~~~~~~~~~~~~~
 """
 
-from __future__ import (absolute_import, division,
-                        print_function, unicode_literals)
-
 import argparse
 from ..settings import get_config
 from tasq.remote.supervisor import supervisor_factory

@@ -4,9 +4,6 @@ tasq.remote.connectio.py
 
 This module contains classes to define connections using zmq sockets.
 """
-
-from __future__ import absolute_import, division, print_function, unicode_literals
-
 from abc import ABCMeta, abstractmethod
 
 import zmq

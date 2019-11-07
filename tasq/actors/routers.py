@@ -4,10 +4,6 @@ tasq.actors.routers.py
 This module contains all routers used as workers for all tasks incoming from
 remote calls.
 """
-
-from __future__ import (absolute_import, division,
-                        print_function, unicode_literals)
-
 from abc import ABCMeta, abstractmethod
 
 

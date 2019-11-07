@@ -5,9 +5,6 @@ Client part of the application, responsible for scheduling jobs to local or
 remote workers.
 """
 
-from __future__ import (absolute_import, division,
-                        print_function, unicode_literals)
-
 from urllib.parse import urlparse
 from abc import ABCMeta, abstractmethod
 from concurrent.futures import Future
