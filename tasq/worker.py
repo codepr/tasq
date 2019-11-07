@@ -11,9 +11,8 @@ from __future__ import (absolute_import, division,
 import sys
 import uuid
 import signal
-from threading import Thread
 from abc import ABCMeta, abstractmethod
-from multiprocessing import Process, JoinableQueue, get_context
+from multiprocessing import Process
 
 from .logger import get_logger
 from .remote.sockets import pickle_and_compress, decompress_and_unpickle
@@ -22,7 +21,7 @@ from .remote.sockets import pickle_and_compress, decompress_and_unpickle
 class Worker(metaclass=ABCMeta):
 
     """Generic worker class, contains a job queue and handle incoming jobs for
-    execution, should be mixed int with Thread or Process class
+    execution, should be mixed-in with a Process class
 
     Attributes
     ----------

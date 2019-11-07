@@ -4,17 +4,16 @@ tasq.job.py
 Jobs related classes and functions, provides abstractions over the concept of a
 task.
 """
-
-from __future__ import (absolute_import, division,
-                        print_function, unicode_literals)
-
 import sys
 import uuid
 import time
-from enum import IntEnum
+import enum
+import dataclasses
+from typing import Any, Optional
 
 
-class JobStatus(IntEnum):
+@enum.unique
+class JobStatus(enum.IntEnum):
     OK = 0
     FAILED = 1
     PENDING = 2
@@ -132,7 +131,9 @@ class Job:
 
     def __repr__(self):
         args = ', '.join(str(i) for i in self.args)
-        kwargs = ', '.join(key + '=' + repr(self.kwargs[key]) for key in self.kwargs)
+        kwargs = ', '.join(
+            key + '=' + repr(self.kwargs[key]) for key in self.kwargs
+        )
         arguments = f"({', '.join([args])}{', '.join([kwargs])})"
         arguments = (arguments[:80] + '...)') if len(arguments) > 80 else arguments
         if self.delay:
@@ -145,17 +146,13 @@ class Job:
         return Job(job_id=name, func=func, *args, **kwargs)
 
 
+@dataclasses.dataclass
 class JobResult:
 
     """Wrapper class for results of task executions"""
 
-    def __init__(self, name, outcome, value, exc=None, exec_time=None):
-        self.name = name
-        self.outcome = outcome
-        self.value = value
-        self.exc = exc
-        self.exec_time = exec_time
-
-    def __repr__(self):
-        return f"""<tasq.job.JobResult({self.name}, {self.outcome},""" \
-            f"""{self.value}, {self.exc}, {self.exec_time})>"""
+    name: str
+    outcome: JobStatus
+    value: Optional[Any]
+    exc: Optional[Exception]
+    exec_time: Optional[float]

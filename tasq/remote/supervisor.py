@@ -4,12 +4,9 @@ tasq.remote.supervisor.py
 Supervisor process, listening for incoming connections to schedule tasks to a
 pool of worker actors
 """
-
-from __future__ import absolute_import, division, print_function, unicode_literals
-
 import os
 import asyncio
-from threading import Thread, Event
+from threading import Thread
 from abc import ABCMeta, abstractmethod
 from multiprocessing import Process, cpu_count
 

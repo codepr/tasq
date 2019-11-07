@@ -4,9 +4,6 @@ tasq.jobqueue.py
 Contains naive implementation of a joinable queue for execution of tasks in a
 single node context.
 """
-
-from __future__ import absolute_import, division, print_function, unicode_literals
-
 from multiprocessing import get_context
 from multiprocessing.queues import JoinableQueue
 
@@ -30,7 +27,8 @@ class JobQueue(JoinableQueue):
     :param start_method: The spawn method of the Joinable queue parent class
 
     :type worker_class: worker.Worker
-    :param worker_class: The worker subclass to use as the thread/process workers
+    :param worker_class: The worker subclass to use as the thread/process
+                         workers
 
     """
 

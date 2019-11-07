@@ -4,9 +4,6 @@ tasq.actors.actor.py
 Contains definitions of generic Actor class, must be subclassed to effectively
 instance useful actors.
 """
-
-from __future__ import absolute_import, division, print_function, unicode_literals
-
 import uuid
 from queue import Queue
 from threading import Thread, Event

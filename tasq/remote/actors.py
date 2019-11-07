@@ -4,9 +4,6 @@ tasq.remote.actors.py
 This module contains all actors and routers as well used as workers for all
 tasks incoming from remote calls.
 """
-
-from __future__ import absolute_import, division, print_function, unicode_literals
-
 from concurrent.futures import Future
 from ..actors.actor import Actor
 
@@ -68,7 +65,8 @@ class WorkerActor(Actor):
         while True:
             job, future = self.recv()
             self._log.debug("Received %s", job)
-            # If eta in keyword arguments spawn a timed actor and send job to it
+            # If eta in keyword arguments spawn a timed actor and send job to
+            # it
             if 'eta' in job.kwargs:
                 eta = job.kwargs.pop('eta')
                 timed_actor = self._ctx.actor_of(
