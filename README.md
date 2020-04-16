@@ -27,7 +27,7 @@ try it in production enviroments.
 
 Starting a worker on a node using Redis as backend
 
-```
+```sh
 $ tq redis-worker --log-level DEBUG
 2019-04-26 23:15:28 - tasq.remote.supervisor-17903: Worker type: Actor
 ```
@@ -36,7 +36,7 @@ In a python shell
 
 **Using a queue object**
 
-```
+```python
 Python 3.7.3 (default, Apr 26 2019, 21:43:19)
 Type 'copyright', 'credits' or 'license' for more information
 IPython 7.4.0 -- An enhanced Interactive Python. Type '?' for help.
@@ -71,7 +71,7 @@ Out[9]: 12586269025
 ```
 
 Scheduling jobs after a delay
-```
+```python
 
 In [10]: fut = tc.schedule(fib, 5, name='fib-delayed', delay=5)
 
@@ -91,7 +91,7 @@ Out[14]  'fib-delayed': <TasqFuture at 0x7f2951856418 state=finished returned Jo
 
 Scheduling a task to be executed continously in a defined interval
 
-```
+```python
 In [15] tq.put(fib, 5, name='8_seconds_interval_fib', eta='8s')
 
 In [16] tq.put(fib, 5, name='2_hours_interval_fib', eta='2h')
@@ -107,13 +107,13 @@ configure the location of the json configuration file on the filesystem.
 By setting the `-c` flag it is possible to also set a location of a
 configuration to follow on the filesystem
 
-```
+```sh
 $ tq worker -c path/to/conf/conf.json
 ```
 
 A worker can be started by specifying the type of sub worker we want:
 
-```
+```sh
 $ tq rabbitmq-worker --worker-type process
 ```
 Using `process` type subworker it is possible to use a distributed queue for
@@ -164,7 +164,7 @@ Being a didactical project it is not released on Pypi yet, just clone the
 repository and install it locally or play with it using `python -i` or
 `ipython`.
 
-```
+```sh
 $ git clone https://github.com/codepr/tasq.git
 $ cd tasq
 $ pip install .
@@ -172,7 +172,7 @@ $ pip install .
 
 or, to skip cloning part
 
-```
+```sh
 $ pip install git+https://github.com/codepr/tasq.git@master#egg=tasq
 ```
 
