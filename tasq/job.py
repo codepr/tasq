@@ -30,8 +30,8 @@ class Job:
     :param job_id: The unique universal identifier of the job
 
     :type func: function
-    :param funct: The core of the task itself, the associated with the Task
-                  that must be executed, it must be a callable
+    :param func: The core of the task itself, the associated with the Task
+                 that must be executed, it must be a callable
 
     """
 
@@ -85,9 +85,7 @@ class Job:
         return self._delay
 
     def finished_ok(self):
-        if self._status == JobStatus.OK:
-            return True
-        return False
+        return self._status == JobStatus.OK
 
     def execution_time(self):
         """Return the time passed between the start of the execution and the
