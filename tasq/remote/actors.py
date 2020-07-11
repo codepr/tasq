@@ -4,6 +4,7 @@ tasq.remote.actors.py
 This module contains all actors and routers as well used as workers for all
 tasks incoming from remote calls.
 """
+import asyncio
 from concurrent.futures import Future
 from ..actors.actor import Actor
 
@@ -29,11 +30,11 @@ class WorkerActor(Actor):
 
     """
 
-    def __init__(self, name=u'', ctx=None, response_actor=None):
+    def __init__(self, name="", ctx=None, response_actor=None):
         super().__init__(name, ctx)
-        self._response_actor = response_actor or ctx.actor_of(
-            ResponseActor, f'ResponseActor - {name}'
-        )
+        # self._response_actor = response_actor or ctx.actor_of(
+        #     ResponseActor, f"ResponseActor - {name}"
+        # )
 
     def submit(self, job):
         """Submits a job object to the run loop of the actor, returning
@@ -52,9 +53,9 @@ class WorkerActor(Actor):
         self._log.debug(
             "Sending message to actor %s - pending jobs %s",
             self.name,
-            self.mailbox_size
+            self.mailbox_size,
         )
-        f = Future()
+        f = asyncio.Future()
         self.send((job, f))
         return f
 
@@ -67,12 +68,12 @@ class WorkerActor(Actor):
             self._log.debug("Received %s", job)
             # If eta in keyword arguments spawn a timed actor and send job to
             # it
-            if 'eta' in job.kwargs:
-                eta = job.kwargs.pop('eta')
+            if "eta" in job.kwargs:
+                eta = job.kwargs.pop("eta")
                 timed_actor = self._ctx.actor_of(
                     TimedActor,
-                    'TimedActor - ' + job.job_id,
-                    response_actor=self._response_actor
+                    "TimedActor - " + job.job_id,
+                    response_actor=self._response_actor,
                 )
                 timed_actor.start()
                 timed_actor.submit(job, eta)
@@ -83,14 +84,15 @@ class WorkerActor(Actor):
                     "%s - Job %s succesfully executed in %s s",
                     self.name,
                     job.job_id,
-                    job.execution_time()
+                    job.execution_time(),
                 )
                 if not response.value and response.exc:
                     jobres = response.exc
                 else:
                     jobres = response.value
-                self._log.debug('%s - Job %s result = %s',
-                                self.name, job.job_id, jobres)
+                self._log.debug(
+                    "%s - Job %s result = %s", self.name, job.job_id, jobres
+                )
                 future.set_result(response)
 
 
@@ -119,7 +121,7 @@ class ResponseActor(Actor):
 
     """
 
-    def __init__(self, name=u'', ctx=None, *, sendfunc=None):
+    def __init__(self, name="", ctx=None, *, sendfunc=None):
         self._sendfunc = sendfunc
         super().__init__(name, ctx)
 
@@ -134,9 +136,9 @@ class TimedActor(Actor):
 
     """Actor designed to run only a single task every defined datetime"""
 
-    def __init__(self, name=u'', ctx=None, response_actor=None):
+    def __init__(self, name="", ctx=None, response_actor=None):
         self._response_actor = response_actor or self._ctx.actor_of(
-            ResponseActor, 'TimedActor - ResponseActor'
+            ResponseActor, "TimedActor - ResponseActor"
         )
         if isinstance(self._response_actor, Actor):
             self._response_actor.start()
@@ -166,7 +168,7 @@ class TimedActor(Actor):
                  the result of the job execution
         """
         future = Future()
-        multiples = {'h': 60 * 60, 'm': 60, 's': 1}
+        multiples = {"h": 60 * 60, "m": 60, "s": 1}
         if isinstance(eta, int):
             delay = eta
         else:
@@ -177,7 +179,7 @@ class TimedActor(Actor):
         self._log.debug(
             "Sending message to actor %s - pending jobs %s",
             self.name,
-            self.mailbox_size
+            self.mailbox_size,
         )
         job.add_delay(delay)
         self.send((job, future))
@@ -195,20 +197,21 @@ class TimedActor(Actor):
                 "%s - Job % succesfully executed in %s s",
                 self.name,
                 job.job_id,
-                job.execution_time()
+                job.execution_time(),
             )
             if not response.value and response.exc:
                 jobres = response.exc
             else:
                 jobres = response.value
-            self._log.debug('%s - Timed job %s result = %s',
-                            self.name, job.job_id, jobres)
+            self._log.debug(
+                "%s - Timed job %s result = %s", self.name, job.job_id, jobres
+            )
             result.set_result(response)
             if isinstance(self._response_actor, Actor):
                 self._response_actor.send(result)
             else:
                 self._response_actor.route(result)
-            self.submit(job, str(job.delay) + 's')
+            self.submit(job, str(job.delay) + "s")
 
 
 class ClientWorker(Actor):
@@ -228,7 +231,7 @@ class ClientWorker(Actor):
 
     """
 
-    def __init__(self, client, name=u'', ctx=None):
+    def __init__(self, client, name="", ctx=None):
         self._client = client
         super().__init__(name=name, ctx=ctx)
 
@@ -259,8 +262,9 @@ class ClientWorker(Actor):
             self._log.debug("%s - executing job %s", self.name, job.job_id)
             if not self._client.is_connected:
                 self._client.connect()
-            fut = self._client.schedule(job.func, *job.args,
-                                        name=job.job_id, **job.kwargs)
+            fut = self._client.schedule(
+                job.func, *job.args, name=job.job_id, **job.kwargs
+            )
             # XXX A bit sloppy, but probably better schedule the fut result
             # settings in a callback
             future.set_result(fut.result())

@@ -1,6 +1,6 @@
 """
-tasq.remote.connectio.py
-~~~~~~~~~~~~~~~~~~~~~~~~
+tasq.remote.connection.py
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
 This module contains classes to define connections using zmq sockets.
 """
@@ -52,8 +52,8 @@ class Server(metaclass=ABCMeta):
         """Binds PUSH and PULL channel sockets to the respective address:port
         pairs defined in the constructor
         """
-        self._pull_socket.bind(f'tcp://{self._host}:{self._pull_port}')
-        self._push_socket.bind(f'tcp://{self._host}:{self._push_port}')
+        self._pull_socket.bind(f"tcp://{self._host}:{self._pull_port}")
+        self._push_socket.bind(f"tcp://{self._host}:{self._push_port}")
 
     def stop(self):
         # Close connected sockets
@@ -72,10 +72,9 @@ class MixedServer(Server):
     """
 
     def _make_sockets(self):
-        self._ctx = {'sync': CloudPickleContext(),
-                     'async': AsyncCloudPickleContext()}
-        self._push_socket = self._ctx['sync'].socket(zmq.PUSH)
-        self._pull_socket = self._ctx['async'].socket(zmq.PULL)
+        self._ctx = {"sync": CloudPickleContext(), "async": AsyncCloudPickleContext()}
+        self._push_socket = self._ctx["sync"].socket(zmq.PUSH)
+        self._pull_socket = self._ctx["async"].socket(zmq.PULL)
         # ZMQ poller settings for async recv
         self._poller = zmq.asyncio.Poller()
         self._poller.register(self._pull_socket, zmq.POLLIN)
@@ -85,8 +84,8 @@ class MixedServer(Server):
         self._pull_socket.close()
         self._push_socket.close()
         # Destroy the contexts
-        self._ctx['sync'].destroy()
-        self._ctx['async'].destroy()
+        self._ctx["sync"].destroy()
+        self._ctx["async"].destroy()
 
     def send(self, data, flags=0):
         """Send data through the PUSH socket, if a signkey flag is set it sign
@@ -108,7 +107,6 @@ class MixedServer(Server):
 
 
 class AsyncServer(Server):
-
     def _make_sockets(self):
         self._ctx = AsyncCloudPickleContext()
         self._push_socket = self._ctx.socket(zmq.PUSH)
@@ -143,8 +141,8 @@ class MixedUnixServer(MixedServer):
         pairs defined in the constructor, being used UNIX sockets, push and
         pull ports are used to define file descriptor on the filesystem.
         """
-        self._pull_socket.bind(f'ipc://{self._host}-{self._pull_port}')
-        self._push_socket.bind(f'ipc://{self._host}-{self._push_port}')
+        self._pull_socket.bind(f"ipc://{self._host}-{self._pull_port}")
+        self._push_socket.bind(f"ipc://{self._host}-{self._push_port}")
 
 
 class AsyncUnixServer(AsyncServer):
@@ -163,8 +161,8 @@ class AsyncUnixServer(AsyncServer):
         pairs defined in the constructor, being used UNIX sockets, push and
         pull ports are used to define file descriptor on the filesystem.
         """
-        self._pull_socket.bind(f'ipc://{self._host}-{self._pull_port}')
-        self._push_socket.bind(f'ipc://{self._host}-{self._push_port}')
+        self._pull_socket.bind(f"ipc://{self._host}-{self._pull_port}")
+        self._push_socket.bind(f"ipc://{self._host}-{self._push_port}")
 
 
 class Connection:
@@ -193,13 +191,14 @@ class Connection:
         using TCP sockets, respectively used to send tasks and to retrieve
         results back
         """
-        self._pull_socket.connect(f'tcp://{self._host}:{self._pull_port}')
-        self._push_socket.connect(f'tcp://{self._host}:{self._push_port}')
+        print(f"Connecting to tcp://{self._host}:{self._pull_port}")
+        self._pull_socket.connect(f"tcp://{self._host}:{self._pull_port}")
+        self._push_socket.connect(f"tcp://{self._host}:{self._push_port}")
 
     def disconnect(self):
         """Disconnect PUSH and PULL sockets"""
-        self._pull_socket.disconnect(f'tcp://{self._host}:{self._pull_port}')
-        self._push_socket.disconnect(f'tcp://{self._host}:{self._push_port}')
+        self._pull_socket.disconnect(f"tcp://{self._host}:{self._pull_port}")
+        self._push_socket.disconnect(f"tcp://{self._host}:{self._push_port}")
 
     def close(self):
         """Close sockets connected to workers, destroy zmq cotext"""
@@ -233,17 +232,16 @@ class UnixConnection(Connection):
         using UNIX sockets, respectively used to send tasks and to retrieve
         results back
         """
-        self._pull_socket.bind(f'ipc://{self._host}-{self._pull_port}')
-        self._push_socket.bind(f'ipc://{self._host}-{self._push_port}')
+        self._pull_socket.bind(f"ipc://{self._host}-{self._pull_port}")
+        self._push_socket.bind(f"ipc://{self._host}-{self._push_port}")
 
     def disconnect(self):
         """Disconnect PUSH and PULL sockets"""
-        self._pull_socket.disconnect(f'ipc://{self._host}-{self._pull_port}')
-        self._push_socket.disconnect(f'ipc://{self._host}-{self._push_port}')
+        self._pull_socket.disconnect(f"ipc://{self._host}-{self._pull_port}")
+        self._push_socket.disconnect(f"ipc://{self._host}-{self._push_port}")
 
 
 class BackendConnection:
-
     def __init__(self, backend, signkey=None):
         self._backend = backend
         self._signkey = signkey
@@ -307,17 +305,15 @@ class ConnectionFactory:
         return UnixConnection(host, push_port, pull_port, signkey)
 
     @staticmethod
-    def make_redis_client(host, port, db, name,
-                          namespace='queue', signkey=None):
+    def make_redis_client(host, port, db, name, namespace="queue", signkey=None):
         return BackendConnection(
             BackendSocket(RedisBackend(host, port, db, name, namespace)),
-            signkey=signkey
+            signkey=signkey,
         )
 
     @staticmethod
-    def make_rabbitmq_client(host, port, role, name,
-                             namespace='queue', signkey=None):
+    def make_rabbitmq_client(host, port, role, name, namespace="queue", signkey=None):
         return BackendConnection(
             BackendSocket(RabbitMQBackend(host, port, role, name, namespace)),
-            signkey=signkey
+            signkey=signkey,
         )

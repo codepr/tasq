@@ -20,7 +20,7 @@ from ..settings import get_config
 conf = get_config()
 
 
-class InvalidSignature(Exception):
+class SignatureNotValidException(Exception):
 
     """Ad-hoc exception for invalid digest signature which doesn't pass the
     verification
@@ -50,15 +50,13 @@ def sign(sharedkey: str, pickled_data: bytes) -> bytes:
     return digest
 
 
-def verifyhmac(sharedkey: str,
-               recvd_digest: bytes,
-               pickled_data: bytes) -> None:
+def verifyhmac(sharedkey: str, recvd_digest: bytes, pickled_data: bytes) -> None:
     """Verify the signed pickled data is valid and no changing were made,
     otherwise raise and exception
     """
     new_digest = hmac.new(sharedkey, pickled_data, hashlib.sha1).digest()
     if recvd_digest != new_digest:
-        raise InvalidSignature
+        raise SignatureNotValidException
 
 
 class CloudPickleSocket(zmq.Socket):
@@ -86,7 +84,7 @@ class CloudPickleSocket(zmq.Socket):
             recv_digest, zipped_data = payload
             try:
                 verifyhmac(signkey.encode(), recv_digest, zipped_data)
-            except InvalidSignature:
+            except SignatureNotValidException:
                 # TODO log here
                 raise
         else:
@@ -125,7 +123,7 @@ class AsyncCloudPickleSocket(Socket):
             recv_digest, zipped_data = payload
             try:
                 verifyhmac(signkey.encode(), recv_digest, zipped_data)
-            except InvalidSignature:
+            except SignatureNotValidException:
                 # TODO log here
                 raise
         else:
@@ -140,7 +138,6 @@ class AsyncCloudPickleContext(Context):
 
 
 class BackendSocket:
-
     def __init__(self, backend):
         self._backend = backend
 
@@ -158,8 +155,9 @@ class BackendSocket:
         zipped_data = pickle_and_compress(data)
         if signkey:
             signed = sign(signkey.encode(), zipped_data)
-            frame = struct.pack(f'!H{len(signed)}s{len(zipped_data)}s',
-                                len(signed), signed, zipped_data)
+            frame = struct.pack(
+                f"!H{len(signed)}s{len(zipped_data)}s", len(signed), signed, zipped_data
+            )
             return self._backend.put_job(frame)
         return self._backend.put_job(zipped_data)
 
@@ -167,8 +165,12 @@ class BackendSocket:
         zipped_result = pickle_and_compress(result)
         if signkey:
             signed = sign(signkey.encode(), zipped_result)
-            frame = struct.pack(f'!H{len(signed)}s{len(zipped_result)}s',
-                                len(signed), signed, zipped_result)
+            frame = struct.pack(
+                f"!H{len(signed)}s{len(zipped_result)}s",
+                len(signed),
+                signed,
+                zipped_result,
+            )
             return self._backend.put_result(frame)
         return self._backend.put_result(zipped_result)
 
@@ -180,14 +182,13 @@ class BackendSocket:
             payload = self._backend.get_next_job(timeout)
             if not payload:
                 return None
-            sign_len = struct.unpack('!H', payload[:2])
+            sign_len = struct.unpack("!H", payload[:2])
             recv_digest, zipped_data = struct.unpack(
-                f'!{sign_len[0]}s{len(payload) - sign_len[0] - 2}s',
-                payload[2:]
+                f"!{sign_len[0]}s{len(payload) - sign_len[0] - 2}s", payload[2:]
             )
             try:
                 verifyhmac(signkey.encode(), recv_digest, zipped_data)
-            except InvalidSignature:
+            except SignatureNotValidException:
                 # TODO log here
                 raise
         else:
@@ -202,14 +203,13 @@ class BackendSocket:
             payload = self._backend.get_available_result(timeout)
             if not payload:
                 return None
-            sign_len = struct.unpack('!H', payload[:2])
+            sign_len = struct.unpack("!H", payload[:2])
             recv_digest, zipped_result = struct.unpack(
-                f'!{sign_len[0]}s{len(payload) - sign_len[0] - 2}s',
-                payload[2:]
+                f"!{sign_len[0]}s{len(payload) - sign_len[0] - 2}s", payload[2:]
             )
             try:
                 verifyhmac(signkey.encode(), recv_digest, zipped_result)
-            except InvalidSignature:
+            except SignatureNotValidException:
                 # TODO log here
                 raise
         else:

@@ -7,11 +7,12 @@ pool of worker actors
 import os
 import asyncio
 from threading import Thread
-from abc import ABCMeta, abstractmethod
+from abc import ABC, ABCMeta, abstractmethod
 from multiprocessing import Process, cpu_count
 
 from .actors import ResponseActor, WorkerActor
 from .connection import ConnectionFactory
+from .server import ZMQTcpServer, ZMQUnixServer
 from ..logger import get_logger
 from ..jobqueue import JobQueue
 from ..worker import ProcessQueueWorker
@@ -23,7 +24,7 @@ def max_workers():
     return (cpu_count() * 2) + 1
 
 
-class BaseSupervisor(metaclass=ABCMeta):
+class Supervisor(ABC):
 
     """Interface for a generic Supervisor, define the basic traits of
     Supervisor process, a class in charge of intermediation between clients
@@ -49,8 +50,7 @@ class BaseSupervisor(metaclass=ABCMeta):
 
     """
 
-    def __init__(self, host, port=9000,
-                 num_workers=max_workers(), signkey=None):
+    def __init__(self, host, port=9000, num_workers=max_workers(), signkey=None):
         # Host address to bind sockets to
         self._host = host
         self._port = port
@@ -58,47 +58,33 @@ class BaseSupervisor(metaclass=ABCMeta):
         self._num_workers = num_workers
         # Send digital signed data
         self._signkey = signkey
-        self._log = get_logger(f'{__name__}-{os.getpid()}')
-        self._server = self._init_server()
-
-    @property
-    def host(self):
-        return self._host
-
-    @property
-    def port(self):
-        return self._port
-
-    @property
-    def num_workers(self):
-        return self._num_workers
-
-    @property
-    def signkey(self):
-        return self._signkey
-
-    @abstractmethod
-    def _init_server(self):
-        pass
+        self._log = get_logger(f"{__name__}-{os.getpid()}")
 
     @abstractmethod
     def stop(self):
         pass
 
     @abstractmethod
-    def serve_forever(self):
+    def start(self):
         pass
 
 
-class ZMQSupervisor(BaseSupervisor, metaclass=ABCMeta):
+class ZMQSupervisor(Supervisor, metaclass=ABCMeta):
 
     """Supervisor process, handle requests asynchronously from clients and
     delegate processing of incoming tasks to worker actors, responses are sent
     back to clients by using a pool of actors as well
     """
 
-    def __init__(self, host, pull_port, push_port, num_workers=max_workers(),
-                 signkey=None, unix_socket=False):
+    def __init__(
+        self,
+        host,
+        pull_port,
+        push_port,
+        num_workers=max_workers(),
+        signkey=None,
+        unix_socket=False,
+    ):
         # Port for push side (outgoing) of the communication channel
         self._push_port = push_port
         # Port for pull side (ingoing) of the communication channel
@@ -110,37 +96,23 @@ class ZMQSupervisor(BaseSupervisor, metaclass=ABCMeta):
         super().__init__(host, num_workers=num_workers, signkey=signkey)
         # Event loop
         self._loop = asyncio.get_event_loop()
-
-    @property
-    def push_port(self):
-        return self._push_port
-
-    @property
-    def pull_port(self):
-        return self._pull_port
-
-    @property
-    def unix_socket(self):
-        return self._unix_socket
-
-    def _init_server(self):
-        """Init the server placeholder"""
-        return ConnectionFactory.make_server(
-            self.host, self.push_port, self.pull_port,
-            self.signkey, self.unix_socket
-        )
+        self._server = ZMQTcpServer(host, push_port, pull_port, signkey)
 
     def _bind_sockets(self):
         """Binds PUSH and PULL channel sockets to the respective address:port
         pairs defined in the constructor
         """
         self._server.bind()
-        self._log.info("Listening for jobs on %s:%s",
-                       self._host, self._pull_port)
+        self._log.info("Listening for jobs on %s:%s", self._host, self._pull_port)
 
-    @abstractmethod
-    async def _start(self):
-        pass
+    async def run(self, unpickle=True):
+        self._log.info("Running")
+        while True:
+            if await self._server.poll():
+                self._log.info("New job")
+                job = await self._server.recv(unpickle=unpickle)
+                f = self._workers.route(job)
+                await self._server.send(await f)
 
     def stop(self):
         """Stops the loop after canceling all remaining tasks"""
@@ -153,13 +125,12 @@ class ZMQSupervisor(BaseSupervisor, metaclass=ABCMeta):
         # Stop server connection
         self._server.stop()
 
-    def serve_forever(self):
+    def start(self):
         """Blocking function, schedule the execution of the coroutine waiting
         for incoming tasks and run the asyncio loop forever
         """
         self._bind_sockets()
-        asyncio.ensure_future(self._start())
-        self._loop.run_forever()
+        asyncio.run(self.run())
 
 
 class ZMQActorSupervisor(ZMQSupervisor):
@@ -169,45 +140,46 @@ class ZMQActorSupervisor(ZMQSupervisor):
     back to clients by using a pool of actors as well
     """
 
-    def __init__(self, host, pull_port, push_port, num_workers=max_workers(),
-                 router_class=RoundRobinRouter, signkey=None, unix_socket=False):
+    def __init__(
+        self,
+        host,
+        pull_port,
+        push_port,
+        num_workers=max_workers(),
+        router_class=RoundRobinRouter,
+        signkey=None,
+        unix_socket=False,
+    ):
         super().__init__(host, pull_port, push_port, num_workers, signkey, unix_socket)
         # Routing type
         self._router_class = router_class
         # Worker's ActorSystem
         self._system = ActorSystem(
-            f'{self._host}:({self._push_port}, {self._pull_port})'
-        )
-        # Actor router for responses
-        self._responses = self._system.router_of(
-            num_workers=self._num_workers,
-            actor_class=ResponseActor,
-            router_class=SmallestMailboxRouter,
-            func_name='send',
-            sendfunc=self._server.send
+            f"{self._host}:({self._push_port}, {self._pull_port})"
         )
         # Generic worker actor router
         self._workers = self._system.router_of(
             num_workers=self._num_workers,
             actor_class=WorkerActor,
             router_class=self._router_class,
-            response_actor=self._responses
+            response_actor=None,
         )
         self._log.info("Worker type: Actor")
 
-    async def _start(self):
-        """Receive jobs from clients with polling"""
-        while True:
-            if await self._server.poll():
-                job = await self._server.recv()
-                res = self._workers.route(job)
-                self._responses.route(res)
-
     @classmethod
-    def create(cls, host, pull_port, push_port, num_workers=max_workers(),
-               router_class=RoundRobinRouter, signkey=None, unix_socket=False):
-        return cls(host, pull_port, push_port,
-                   num_workers, router_class, signkey, unix_socket)
+    def create(
+        cls,
+        host,
+        pull_port,
+        push_port,
+        num_workers=max_workers(),
+        router_class=RoundRobinRouter,
+        signkey=None,
+        unix_socket=False,
+    ):
+        return cls(
+            host, pull_port, push_port, num_workers, router_class, signkey, unix_socket
+        )
 
 
 class ZMQQueueSupervisor(ZMQSupervisor):
@@ -217,37 +189,44 @@ class ZMQQueueSupervisor(ZMQSupervisor):
     sent back to clients by using a dedicated thread
     """
 
-    def __init__(self, host, pull_port, push_port, num_workers=max_workers(),
-                 worker_class=ProcessQueueWorker, signkey=None, unix_socket=False):
+    def __init__(
+        self,
+        host,
+        pull_port,
+        push_port,
+        num_workers=max_workers(),
+        worker_class=ProcessQueueWorker,
+        signkey=None,
+        unix_socket=False,
+    ):
         super().__init__(host, pull_port, push_port, num_workers, signkey, unix_socket)
         # Workers class type
         self._worker_class = worker_class
         # Job queue passed in to workers
-        self._jobqueue = JobQueue(num_workers=num_workers,
-                                  worker_class=worker_class)
+        self._jobqueue = JobQueue(num_workers=num_workers, worker_class=worker_class)
         # Dedicated thread to client responses
-        self._response_thread = Thread(target=self._respond, daemon=True)
-        self._response_thread.start()
+        # self._response_thread = Thread(target=self._respond, daemon=True)
+        # self._response_thread.start()
         self._log.info("Worker type: %s", worker_class.__name__)
 
-    def _respond(self):
-        """Spin a loop and respond to client with whatever results arrive in
-        the completed_jobs queue
-        """
-        while True:
-            response = self._jobqueue.get_result()
-            # Poison pill check
-            if response is None:
-                break
-            self._server.send(response)
-
-    async def _start(self):
-        """Receive jobs from clients with polling"""
-        unpickle = False
-        while True:
-            if await self._server.poll():
-                pickled_job = await self._server.recv(unpickle=unpickle)
-                self._jobqueue.add_job(pickled_job)
+    # def _respond(self):
+    #     """Spin a loop and respond to client with whatever results arrive in
+    #     the completed_jobs queue
+    #     """
+    #     while True:
+    #         response = self._jobqueue.get_result()
+    #         # Poison pill check
+    #         if response is None:
+    #             break
+    #         self._server.send(response)
+    #
+    # async def _start(self):
+    #     """Receive jobs from clients with polling"""
+    #     unpickle = False
+    #     while True:
+    #         if await self._server.poll():
+    #             pickled_job = await self._server.recv(unpickle=unpickle)
+    #             self._jobqueue.add_job(pickled_job)
 
     def stop(self):
         """Stops the running response threads and the pool of processes"""
@@ -256,38 +235,53 @@ class ZMQQueueSupervisor(ZMQSupervisor):
         self._jobqueue.shutdown()
         self._response_thread.join()
 
-    def serve_forever(self):
+    def start(self, unpickle=True):
         """Blocking function, schedule the execution of the coroutine waiting
         for incoming tasks and run the asyncio loop forever
         """
         self._bind_sockets()
-        asyncio.ensure_future(self._start())
-        self._loop.run_forever()
+        asyncio.run(self.run(False))
 
     @classmethod
-    def create(cls, host, pull_port, push_port, num_workers=max_workers(),
-               worker_class=ProcessQueueWorker, signkey=None, unix_socket=False):
-        return cls(host, pull_port, push_port,
-                   num_workers, worker_class, signkey, unix_socket)
+    def create(
+        cls,
+        host,
+        pull_port,
+        push_port,
+        num_workers=max_workers(),
+        worker_class=ProcessQueueWorker,
+        signkey=None,
+        unix_socket=False,
+    ):
+        return cls(
+            host, pull_port, push_port, num_workers, worker_class, signkey, unix_socket
+        )
 
 
-class RedisQueueSupervisor(BaseSupervisor):
+class RedisQueueSupervisor(Supervisor):
 
     """Supervisor process, handle requests asynchronously from clients and
     delegate processing of incoming tasks to worker processes, responses are
     sent back to clients by using a dedicated thread
     """
 
-    def __init__(self, host, port, db, name, num_workers=max_workers(),
-                 worker_class=ProcessQueueWorker, signkey=None):
+    def __init__(
+        self,
+        host,
+        port,
+        db,
+        name,
+        num_workers=max_workers(),
+        worker_class=ProcessQueueWorker,
+        signkey=None,
+    ):
         self._db = db
         self._name = name
         super().__init__(host, port, num_workers, signkey)
         # Workers class type
         self._worker_class = worker_class
         # Job queue passed in to workers
-        self._jobqueue = JobQueue(num_workers=num_workers,
-                                  worker_class=worker_class)
+        self._jobqueue = JobQueue(num_workers=num_workers, worker_class=worker_class)
         # Dedicated thread to client responses
         self._response_thread = Thread(target=self._respond, daemon=True)
         self._response_thread.start()
@@ -300,8 +294,7 @@ class RedisQueueSupervisor(BaseSupervisor):
 
     def _init_server(self):
         return ConnectionFactory.make_redis_client(
-            self._host, self._port, self._db,
-            self._name, signkey=self._signkey
+            self._host, self._port, self._db, self._name, signkey=self._signkey
         )
 
     def stop(self):
@@ -311,7 +304,7 @@ class RedisQueueSupervisor(BaseSupervisor):
         self._jobqueue.shutdown()
         self._response_thread.join()
 
-    def serve_forever(self):
+    def start(self):
         """Receive jobs from clients with polling"""
         while self._run:
             job = self._server.recv(5)
@@ -332,15 +325,30 @@ class RedisQueueSupervisor(BaseSupervisor):
             self._server.send(response)
 
     @classmethod
-    def create(cls, host, port, db, name, num_workers=max_workers(),
-               worker_class=ProcessQueueWorker, signkey=None):
+    def create(
+        cls,
+        host,
+        port,
+        db,
+        name,
+        num_workers=max_workers(),
+        worker_class=ProcessQueueWorker,
+        signkey=None,
+    ):
         return cls(host, port, db, name, num_workers, worker_class, signkey)
 
 
-class RedisActorSupervisor(BaseSupervisor):
-
-    def __init__(self, host, port, db, name, num_workers=max_workers(),
-                 router_class=RoundRobinRouter, signkey=None):
+class RedisActorSupervisor(Supervisor):
+    def __init__(
+        self,
+        host,
+        port,
+        db,
+        name,
+        num_workers=max_workers(),
+        router_class=RoundRobinRouter,
+        signkey=None,
+    ):
         self._db = db
         self._name = name
         super().__init__(host, port, num_workers, signkey)
@@ -354,15 +362,15 @@ class RedisActorSupervisor(BaseSupervisor):
             num_workers=self._num_workers,
             actor_class=ResponseActor,
             router_class=SmallestMailboxRouter,
-            func_name='send',
-            sendfunc=self._server.send_result
+            func_name="send",
+            sendfunc=self._server.send_result,
         )
         # Generic worker actor router
         self._workers = self._system.router_of(
             num_workers=self._num_workers,
             actor_class=WorkerActor,
             router_class=self._router_class,
-            response_actor=self._responses
+            response_actor=self._responses,
         )
         self._log.info("Worker type: Actor")
 
@@ -372,15 +380,14 @@ class RedisActorSupervisor(BaseSupervisor):
 
     def _init_server(self):
         return ConnectionFactory.make_redis_client(
-            self._host, self._port, self._db,
-            self._name, signkey=self._signkey
+            self._host, self._port, self._db, self._name, signkey=self._signkey
         )
 
     def stop(self):
         self._log.info("\nStopping..")
         self._run = False
 
-    def serve_forever(self):
+    def start(self):
         """Receive jobs from clients with polling"""
         while self._run:
             job = self._server.recv(5)
@@ -392,27 +399,41 @@ class RedisActorSupervisor(BaseSupervisor):
             self._log.info("Routed")
 
     @classmethod
-    def create(cls, host, port, db, name, num_workers=max_workers(),
-               router_class=RoundRobinRouter, signkey=None):
+    def create(
+        cls,
+        host,
+        port,
+        db,
+        name,
+        num_workers=max_workers(),
+        router_class=RoundRobinRouter,
+        signkey=None,
+    ):
         return cls(host, port, db, name, num_workers, router_class, signkey)
 
 
-class RabbitMQQueueSupervisor(BaseSupervisor):
+class RabbitMQQueueSupervisor(Supervisor):
 
     """Supervisor process, handle requests from clients and
     delegate processing of incoming tasks to worker processes, responses are
     sent back to clients by using a dedicated thread
     """
 
-    def __init__(self, host, port, name, num_workers=max_workers(),
-                 worker_class=ProcessQueueWorker, signkey=None):
+    def __init__(
+        self,
+        host,
+        port,
+        name,
+        num_workers=max_workers(),
+        worker_class=ProcessQueueWorker,
+        signkey=None,
+    ):
         self._name = name
         super().__init__(host, port, num_workers, signkey)
         # Workers class type
         self._worker_class = worker_class
         # Job queue passed in to workers
-        self._jobqueue = JobQueue(num_workers=num_workers,
-                                  worker_class=worker_class)
+        self._jobqueue = JobQueue(num_workers=num_workers, worker_class=worker_class)
         # Dedicated thread to client responses
         self._response_thread = Thread(target=self._respond, daemon=True)
         self._response_thread.start()
@@ -425,8 +446,7 @@ class RabbitMQQueueSupervisor(BaseSupervisor):
 
     def _init_server(self):
         return ConnectionFactory.make_rabbitmq_client(
-            self._host, self._port, 'receiver',
-            self._name, signkey=self._signkey
+            self._host, self._port, "receiver", self._name, signkey=self._signkey
         )
 
     def stop(self):
@@ -435,7 +455,7 @@ class RabbitMQQueueSupervisor(BaseSupervisor):
         self._jobqueue.shutdown()
         self._response_thread.join()
 
-    def serve_forever(self):
+    def start(self):
         """Receive jobs from clients with polling"""
         while self._run:
             job = self._server.recv(5)
@@ -456,15 +476,28 @@ class RabbitMQQueueSupervisor(BaseSupervisor):
             self._server.send(response)
 
     @classmethod
-    def create(cls, host, port, name, num_workers=max_workers(),
-               worker_class=ProcessQueueWorker, signkey=None):
+    def create(
+        cls,
+        host,
+        port,
+        name,
+        num_workers=max_workers(),
+        worker_class=ProcessQueueWorker,
+        signkey=None,
+    ):
         return cls(host, port, name, num_workers, worker_class, signkey)
 
 
-class RabbitMQActorSupervisor(BaseSupervisor):
-
-    def __init__(self, host, port, name, num_workers=max_workers(),
-                 router_class=RoundRobinRouter, signkey=None):
+class RabbitMQActorSupervisor(Supervisor):
+    def __init__(
+        self,
+        host,
+        port,
+        name,
+        num_workers=max_workers(),
+        router_class=RoundRobinRouter,
+        signkey=None,
+    ):
         self._name = name
         super().__init__(host, port, num_workers, signkey)
         # Routing type
@@ -477,15 +510,15 @@ class RabbitMQActorSupervisor(BaseSupervisor):
             num_workers=self._num_workers,
             actor_class=ResponseActor,
             router_class=SmallestMailboxRouter,
-            func_name='send',
-            sendfunc=self._server.send_result
+            func_name="send",
+            sendfunc=self._server.send_result,
         )
         # Generic worker actor router
         self._workers = self._system.router_of(
             num_workers=self._num_workers,
             actor_class=WorkerActor,
             router_class=self._router_class,
-            response_actor=self._responses
+            response_actor=self._responses,
         )
         self._log.info("Worker type: Actor")
 
@@ -495,8 +528,7 @@ class RabbitMQActorSupervisor(BaseSupervisor):
 
     def _init_server(self):
         return ConnectionFactory.make_rabbitmq_client(
-            self._host, self._port, 'receiver',
-            self._name, signkey=self._signkey
+            self._host, self._port, "receiver", self._name, signkey=self._signkey
         )
 
     def stop(self):
@@ -504,7 +536,7 @@ class RabbitMQActorSupervisor(BaseSupervisor):
         self._run = False
         self._server.close()
 
-    def serve_forever(self):
+    def start(self):
         """Receive jobs from clients with polling"""
         while self._run:
             job = self._server.recv(5)
@@ -516,8 +548,15 @@ class RabbitMQActorSupervisor(BaseSupervisor):
             self._log.info("Routed")
 
     @classmethod
-    def create(cls, host, port, name, num_workers=max_workers(),
-               router_class=RoundRobinRouter, signkey=None):
+    def create(
+        cls,
+        host,
+        port,
+        name,
+        num_workers=max_workers(),
+        router_class=RoundRobinRouter,
+        signkey=None,
+    ):
         return cls(host, port, name, num_workers, router_class, signkey)
 
 
@@ -539,16 +578,19 @@ class Supervisors:
         self._init_binds()
 
     def _serve_supervisor(self, host, psh_port, pl_port):
-        m = ZMQActorSupervisor(host, psh_port, pl_port, signkey=self._signkey,
-                               unix_socket=self._unix_socket)
-        m.serve_forever()
+        m = ZMQActorSupervisor(
+            host,
+            psh_port,
+            pl_port,
+            signkey=self._signkey,
+            unix_socket=self._unix_socket,
+        )
+        m.start()
 
     def _init_binds(self):
         self._procs = [
-            Process(
-                target=self._serve_supervisor,
-                args=(host, psh_port, pl_port,)
-            ) for host, psh_port, pl_port in self._binds
+            Process(target=self._serve_supervisor, args=(host, psh_port, pl_port,))
+            for host, psh_port, pl_port in self._binds
         ]
 
     def start_procs(self):
@@ -563,7 +605,6 @@ class Supervisors:
 
 
 class SupervisorFactory:
-
     def __init__(self):
         self._builders = {}
 
@@ -578,15 +619,18 @@ class SupervisorFactory:
 
 
 supervisor_factory = SupervisorFactory()
-supervisor_factory.register_builder('ZMQ_ACTOR_SUPERVISOR',
-                                    ZMQActorSupervisor.create)
-supervisor_factory.register_builder('ZMQ_QUEUE_SUPERVISOR',
-                                    ZMQQueueSupervisor.create)
-supervisor_factory.register_builder('REDIS_QUEUE_SUPERVISOR',
-                                    RedisQueueSupervisor.create)
-supervisor_factory.register_builder('REDIS_ACTOR_SUPERVISOR',
-                                    RedisActorSupervisor.create)
-supervisor_factory.register_builder('AMQP_QUEUE_SUPERVISOR',
-                                    RabbitMQQueueSupervisor.create)
-supervisor_factory.register_builder('AMQP_ACTOR_SUPERVISOR',
-                                    RabbitMQActorSupervisor.create)
+supervisor_factory.register_builder("ZMQ_ACTOR_SUPERVISOR", ZMQActorSupervisor.create)
+supervisor_factory.register_builder("ZMQ_QUEUE_SUPERVISOR", ZMQQueueSupervisor.create)
+supervisor_factory.register_builder(
+    "REDIS_QUEUE_SUPERVISOR", RedisQueueSupervisor.create
+)
+supervisor_factory.register_builder(
+    "REDIS_ACTOR_SUPERVISOR", RedisActorSupervisor.create
+)
+supervisor_factory.register_builder(
+    "AMQP_QUEUE_SUPERVISOR", RabbitMQQueueSupervisor.create
+)
+supervisor_factory.register_builder(
+    "AMQP_ACTOR_SUPERVISOR", RabbitMQActorSupervisor.create
+)
+

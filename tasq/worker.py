@@ -30,7 +30,7 @@ class Worker(metaclass=ABCMeta):
 
     """
 
-    def __init__(self, job_queue, completed_jobs, name=u'', *args, **kwargs):
+    def __init__(self, job_queue, completed_jobs, name="", *args, **kwargs):
         # Process name, defaulted to a uuid
         self._name = name or uuid.uuid4()
         # A joinable job queue
@@ -42,7 +42,7 @@ class Worker(metaclass=ABCMeta):
         # Track last job executed
         self._last_job = None
         # Logging settings
-        self._log = get_logger(f'{__name__}.{self._name}')
+        self._log = get_logger(f"{__name__}.{self._name}")
         # Handle exit gracefully
         signal.signal(signal.SIGINT, self.exit)
         signal.signal(signal.SIGTERM, self.exit)
@@ -78,9 +78,9 @@ class Worker(metaclass=ABCMeta):
             job = decompress_and_unpickle(zipped_job)
             self._last_job = job
             self._log.debug("Executing job %s", job.job_id)
-            if 'eta' in job.kwargs:
-                eta = job.kwargs.pop('eta')
-                multiples = {'h': 60 * 60, 'm': 60, 's': 1}
+            if "eta" in job.kwargs:
+                eta = job.kwargs.pop("eta")
+                multiples = {"h": 60 * 60, "m": 60, "s": 1}
                 if isinstance(eta, int):
                     delay = eta
                 else:
@@ -94,13 +94,14 @@ class Worker(metaclass=ABCMeta):
                 # answered to the requesting client
                 self._completed_jobs.put(response)
                 # Re enter the job in the queue
-                job.kwargs['eta'] = str(job.delay) + 's'
+                job.kwargs["eta"] = str(job.delay) + "s"
                 self._job_queue.put(pickle_and_compress(job))
             else:
                 response = self.execute_job(job)
                 # Push the completed job in the result queue ready to be
                 # answered to the requesting client
-                self._completed_jobs.put(response)
+                # self._completed_jobs.put(response)
+                job.set_result(response)
             self._done = True
 
     def exit(self, sgl, frm):
@@ -124,8 +125,6 @@ class ProcessQueueWorker(Worker, Process):
         response = job.execute()
         self._job_queue.task_done()
         self._log.debug(
-            "Job %s succesfully executed in %s s",
-            job.job_id,
-            job.execution_time()
+            "Job %s succesfully executed in %s s", job.job_id, job.execution_time()
         )
         return response

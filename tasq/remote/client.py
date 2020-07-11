@@ -291,6 +291,7 @@ class ZMQTasqClient(BaseTasqClient):
             'signkey': signkey,
             'unix_socket': scheme == 'unix'
         }
+        print(conn_args)
         return cls(**conn_args)
 
 
