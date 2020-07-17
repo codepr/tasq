@@ -88,7 +88,10 @@ class JobQueue(JoinableQueue):
                     executed
         """
         # TODO ugly
-        obj = serde.loads(job)
+        if isinstance(job, bytes):
+            obj = serde.loads(job)
+        else:
+            obj = job
         self._results[obj.job_id] = Future()
         self.put(job)
         return self._results[obj.job_id]

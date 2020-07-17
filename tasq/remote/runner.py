@@ -20,21 +20,14 @@ def max_workers():
 
 
 class Runner:
-    def __init__(self, backend, worker_factory, signkey=None):
+    def __init__(self, backend, worker_factory, unpickle=True, signkey=None):
         # Send digital signed data
         self._signkey = signkey
         self._backend = backend
         self._workers = worker_factory()
         self._run = True
+        self._unpickle = unpickle
         self._log = get_logger(f"{__name__}-{os.getpid()}")
-
-    def run(self):
-        while self._run:
-            job = self._backend.recv(5)
-            if not job:
-                continue
-            fut = self._workers.route(job)
-            fut.add_done_callback(self._respond)
 
     def _respond(self, fut):
         self._backend.send_result(fut.result())
@@ -52,6 +45,14 @@ class Runner:
         """
         self.run()
 
+    def run(self):
+        while self._run:
+            job = self._backend.recv(5, unpickle=self._unpickle)
+            if not job:
+                continue
+            fut = self._workers.route(job)
+            fut.add_done_callback(self._respond)
+
 
 class ZMQRunner:
     """Runner process, handle requests asynchronously from clients and
@@ -67,14 +68,6 @@ class ZMQRunner:
         self._unpickle = unpickle
         self._log = get_logger(f"{__name__}-{os.getpid()}")
         self._loop = asyncio.get_event_loop()
-
-    async def run(self):
-        while True:
-            if await self._backend.poll():
-                job = await self._backend.recv(unpickle=self._unpickle)
-                f = self._workers.route(job)
-                fut = asyncio.wrap_future(f)
-                await self._backend.send(await fut)
 
     def stop(self):
         """Stops the loop after canceling all remaining tasks"""
@@ -93,6 +86,14 @@ class ZMQRunner:
         self._backend.bind()
         self._loop.create_task(self.run())
         self._loop.run_forever()
+
+    async def run(self):
+        while True:
+            if await self._backend.poll():
+                job = await self._backend.recv(unpickle=self._unpickle)
+                f = self._workers.route(job)
+                fut = asyncio.wrap_future(f)
+                await self._backend.send(await fut)
 
 
 class Runners:
@@ -209,7 +210,7 @@ def build_redis_actor_runner(
         lambda: worker.build_worker_actor_router(
             router_class, num_workers, ctx
         ),
-        signkey,
+        signkey=signkey,
     )
 
 
@@ -225,7 +226,7 @@ def build_redis_queue_runner(
     server = connect_redis_backend(
         host, port, db, name, namespace, signkey=signkey
     )
-    return Runner(server, lambda: worker.build_jobqueue(num_workers), signkey)
+    return Runner(server, lambda: worker.build_jobqueue(num_workers), False, signkey)
 
 
 def build_rabbitmq_actor_runner(
@@ -247,7 +248,7 @@ def build_rabbitmq_actor_runner(
         lambda: worker.build_worker_actor_router(
             router_class, num_workers, ctx
         ),
-        signkey,
+        signkey=signkey,
     )
 
 
@@ -263,7 +264,7 @@ def build_rabbitmq_queue_runner(
     server = connect_rabbitmq_backend(
         host, port, role, name, namespace, signkey=signkey
     )
-    return Runner(server, lambda: worker.build_jobqueue(num_workers), signkey)
+    return Runner(server, lambda: worker.build_jobqueue(num_workers), False, signkey)
 
 
 runner_factory = RunnerFactory()
