@@ -1,6 +1,7 @@
 """
-tasq.worker.py
-~~~~~~~~~~~~~~
+tasq.worker.executor.py
+~~~~~~~~~~~~~~~~~~~~~~~
+
 Generic worker, useful to run jobs in a single node with multiple core
 available.
 """
@@ -11,7 +12,7 @@ from abc import ABCMeta, abstractmethod
 from multiprocessing import Process
 
 import tasq.remote.serializer as serde
-from .logger import get_logger
+from ..logger import get_logger
 
 
 class Executor(metaclass=ABCMeta):
@@ -92,7 +93,7 @@ class Executor(metaclass=ABCMeta):
                 response = self.execute_job(job)
                 # Push the completed job in the result queue ready to be
                 # answered to the requesting client
-                self._completed_jobs.put(response)
+                self._completed_jobs.put((job.job_id, response))
                 # Re enter the job in the queue
                 job.kwargs["eta"] = str(job.delay) + "s"
                 self._job_queue.put(serde.dumps(job))
@@ -100,8 +101,7 @@ class Executor(metaclass=ABCMeta):
                 response = self.execute_job(job)
                 # Push the completed job in the result queue ready to be
                 # answered to the requesting client
-                # self._completed_jobs.put(response)
-                job.set_result(response)
+                self._completed_jobs.put((job.job_id, response))
             self._done = True
 
     def exit(self, sgl, frm):

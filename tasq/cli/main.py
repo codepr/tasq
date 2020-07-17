@@ -4,25 +4,25 @@ tasq.cli.main.py
 """
 
 import argparse
+from ..logger import logger
 from ..settings import get_config
-from tasq.remote.supervisor import supervisor_factory
-from tasq.logger import logger
+from ..remote.runner import runner_factory
 
 
-class UnknownSupervisorException(Exception):
+class UnknownRunnerException(Exception):
     pass
 
 
-supervisors = {
+runners = {
     "actor": {
-        "zmq": "ZMQ_ACTOR_SUPERVISOR",
-        "redis": "REDIS_ACTOR_SUPERVISOR",
-        "rabbitmq": "AMQP_ACTOR_SUPERVISOR",
+        "zmq": "ZMQ_ACTOR_RUNNER",
+        "redis": "REDIS_ACTOR_RUNNER",
+        "rabbitmq": "AMQP_ACTOR_RUNNER",
     },
     "process": {
-        "zmq": "ZMQ_QUEUE_SUPERVISOR",
-        "redis": "REDIS_QUEUE_SUPERVISOR",
-        "rabbitmq": "AMQP_QUEUE_SUPERVISOR",
+        "zmq": "ZMQ_QUEUE_RUNNER",
+        "redis": "REDIS_QUEUE_RUNNER",
+        "rabbitmq": "AMQP_QUEUE_RUNNER",
     },
 }
 
@@ -59,10 +59,15 @@ def parse_arguments():
         type=int,
     )
     parser.add_argument(
-        "--worker-type", help="The type of worker to deploy for a supervisor", nargs="?"
+        "--worker-type",
+        help="The type of worker to deploy for a runner",
+        nargs="?",
     )
     parser.add_argument(
-        "--db", help="The database to use with redis as backend", nargs="?", type=int
+        "--db",
+        help="The database to use with redis as backend",
+        nargs="?",
+        type=int,
     )
     parser.add_argument(
         "--name",
@@ -72,13 +77,13 @@ def parse_arguments():
     parser.add_argument(
         "--signkey",
         help="The shared key to use to sign byte streams between clients and "
-        "supervisors",
+        "runners",
         nargs="?",
     )
     parser.add_argument(
         "--unix",
         "-u",
-        help="Unix socket flag, in case supervisors and "
+        help="Unix socket flag, in case runners and "
         "clients reside on the same node",
         action="store_true",
     )
@@ -93,16 +98,16 @@ def parse_arguments():
     return args
 
 
-def start_worker(supervisor_type, worker_type, host, **kwargs):
+def start_worker(runner_type, worker_type, host, **kwargs):
     try:
-        s_type = supervisors[worker_type][supervisor_type]
+        s_type = runners[worker_type][runner_type]
     except KeyError:
-        raise UnknownSupervisorException()
+        raise UnknownRunnerException()
     try:
-        supervisor = supervisor_factory.create(s_type, host=host, **kwargs)
-        supervisor.start()
+        runner = runner_factory.create(s_type, host=host, **kwargs)
+        runner.start()
     except KeyboardInterrupt:
-        supervisor.stop()
+        runner.stop()
 
 
 def main():
@@ -110,7 +115,7 @@ def main():
     conf = get_config(args.conf)
     logger.loglevel = args.log_level or conf["log_level"]
     signkey = args.signkey or conf["signkey"]
-    unix_socket = conf["unix_socket"]
+    unix = conf["unix"]
     num_workers = args.num_workers or conf["num_workers"]
     worker_type = args.worker_type or "actor"
     addr = args.address or conf["addr"]
@@ -121,11 +126,10 @@ def main():
             "zmq",
             worker_type,
             addr,
-            push_port=push_port,
-            pull_port=pull_port,
+            channel=(push_port, pull_port),
             signkey=signkey,
             num_workers=num_workers,
-            unix_socket=unix_socket,
+            unix=unix,
         )
     elif args.subcommand == "redis-worker":
         port = args.port or conf["redis"]["port"]

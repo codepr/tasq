@@ -1,13 +1,28 @@
 """
 tasq.jobqueue.py
 ~~~~~~~~~~~~~~~~
+
 Contains naive implementation of a joinable queue for execution of tasks in a
 single node context.
 """
+
+import threading
+from concurrent.futures import Future
 from multiprocessing import get_context
 from multiprocessing.queues import JoinableQueue
 
-from .worker import ProcessQueueWorker
+import tasq.remote.serializer as serde
+from .executor import ProcessQueueExecutor
+
+
+def gather_results(jobs, result_queue):
+    while True:
+        job = result_queue.get()
+        if not job:
+            # Poison pill
+            break
+        job_id, response = job
+        jobs[job_id].set_result(response)
 
 
 class JobQueue(JoinableQueue):
@@ -32,8 +47,12 @@ class JobQueue(JoinableQueue):
 
     """
 
-    def __init__(self, num_workers=4, start_method='fork',
-                 worker_class=ProcessQueueWorker):
+    def __init__(
+        self,
+        num_workers=4,
+        start_method="fork",
+        worker_class=ProcessQueueExecutor,
+    ):
         # if not isinstance(worker_class, Worker):
         #     raise Exception
         # Retrieve the spawn context for the joinable queue super class
@@ -46,12 +65,14 @@ class JobQueue(JoinableQueue):
         self._completed_jobs = JoinableQueue(ctx=ctx)
         # Worker class, can be either Process or Thread
         self._workerclass = worker_class
+        self._results = {}
+        threading.Thread(
+            target=gather_results,
+            args=(self._results, self._completed_jobs),
+            daemon=True,
+        ).start()
         # Spin the workers
         self.start_workers()
-
-    @property
-    def completed_jobs(self):
-        return self._completed_jobs
 
     @property
     def num_workers(self):
@@ -66,23 +87,11 @@ class JobQueue(JoinableQueue):
         :param job: The `tasq.Job` object containing the function to be
                     executed
         """
+        # TODO ugly
+        obj = serde.loads(job)
+        self._results[obj.job_id] = Future()
         self.put(job)
-
-    def get_job(self, timeout=None):
-        """Retrieve the last inserted job
-
-        Args
-        ----
-        :type timeout: int or None
-        :param timeout: The time to wait to get the next incoming job, if None
-                        block forever till a new job arrive
-
-        :return: A `tasq.Job` object
-        """
-        return self.get(timeout=timeout)
-
-    def get_result(self, block=True, timeout=None):
-        return self._completed_jobs.get(block, timeout)
+        return self._results[obj.job_id]
 
     def shutdown(self):
         self._completed_jobs.put(None)
@@ -90,5 +99,8 @@ class JobQueue(JoinableQueue):
     def start_workers(self):
         """Create and start all the workers"""
         for _ in range(self.num_workers):
-            w = self._workerclass(self, self.completed_jobs)
+            w = self._workerclass(self, self._completed_jobs)
             w.start()
+
+    def route(self, job):
+        return self.add_job(job)

@@ -1,18 +1,92 @@
 """
-tasq.remote.backends.redis.py
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tasq.remote.backend.py
+~~~~~~~~~~~~~~~~~~~~~~
 
-Redis backend connection implementation, provides functions and classes to
-handle a redis queue in a more convenient way for the system.
+This module contains classes to create backends.
 """
 
 import json
+import queue
+import threading
+
 try:
     import redis
 except ImportError:
     print("You need to install redis python driver to use redis backend")
+try:
+    import zmq
+except ImportError:
+    print("You need to install zmq python driver to use ZMQ backend")
+try:
+    import pika
+except ImportError:
+    print("You need to install pika to use rabbitmq backend")
 
+
+from .sockets import AsyncCloudPickleContext
 from tasq.logger import get_logger
+
+
+class ZMQBackend:
+
+    """Connection class, set up two communication channels, a PUSH one using a
+    synchronous socket and a PULL one using an asynchronous socket. Each socket
+    is a subclass of zmq sockets given the capability to handle cloudpickled
+    data
+    """
+
+    def __init__(self, host, push_port, pull_port, signkey=None, unix=False):
+        # Host address to bind sockets to
+        self._host = host
+        # Send digital signed data
+        self._signkey = signkey
+        # Port for pull side (ingoing) of the communication channel
+        self._pull_port = pull_port
+        # Port for push side (outgoing) of the communication channel
+        self._push_port = push_port
+        # ZMQ settings
+        self._ctx = AsyncCloudPickleContext()
+        self._push_socket = self._ctx.socket(zmq.PUSH)
+        self._pull_socket = self._ctx.socket(zmq.PULL)
+        # ZMQ poller settings for async recv
+        self._poller = zmq.asyncio.Poller()
+        self._poller.register(self._pull_socket, zmq.POLLIN)
+        self._unix = unix
+
+    def bind(self):
+        """Binds PUSH and PULL channel sockets to the respective address:port
+        pairs defined in the constructor
+        """
+        protocol = "tcp" if not self._unix else "ipc"
+        self._pull_socket.bind(f"{protocol}://{self._host}:{self._pull_port}")
+        self._push_socket.bind(f"{protocol}://{self._host}:{self._push_port}")
+
+    def stop(self):
+        # Close connected sockets
+        self._pull_socket.close()
+        self._push_socket.close()
+        # Destroy the contexts
+        self._ctx.destroy()
+
+    async def poll(self):
+        events = await self._poller.poll()
+        if self._pull_socket in dict(events):
+            return dict(events)
+        return None
+
+    async def send(self, data, flags=0):
+        """Send data through the PUSH socket, if a signkey flag is set it sign
+        it before sending
+        """
+        await self._push_socket.send_data(data, flags, self._signkey)
+
+    async def recv(self, unpickle=True, flags=0):
+        """Asynchronous receive data from the PULL socket, if a signkey flag is
+        set it checks for integrity of the received data
+        """
+        return await self._pull_socket.recv_data(
+            unpickle, flags, self._signkey
+        )
 
 
 class RedisBackend:
@@ -57,7 +131,7 @@ class RedisBackend:
 
         log = get_logger(__name__)
 
-        def __init__(self, name, host, port, db, namespace='queue'):
+        def __init__(self, name, host, port, db, namespace="queue"):
             """The default connection parameters are: host='localhost',
             port=6379, db=0
             """
@@ -66,10 +140,10 @@ class RedisBackend:
             try:
                 _ = self._db.dbsize()
             except ConnectionError as e:
-                self.log.warning('Connection to DB failed with error %s.', e)
+                self.log.warning("Connection to DB failed with error %s.", e)
 
-            self._queue_name = f'{namespace}:{name}'
-            self._work_queue_name = f'{namespace}:{name}:work'
+            self._queue_name = f"{namespace}:{name}"
+            self._work_queue_name = f"{namespace}:{name}:work"
 
         def qsize(self):
             """Return the approximate size of the queue."""
@@ -135,11 +209,13 @@ class RedisBackend:
 
             """
             if block:
-                item = self._db.brpoplpush(self._queue_name,
-                                           self._work_queue_name, timeout)
+                item = self._db.brpoplpush(
+                    self._queue_name, self._work_queue_name, timeout
+                )
             else:
-                item = self._db.rpoplpush(self._queue_name,
-                                          self._work_queue_name)
+                item = self._db.rpoplpush(
+                    self._queue_name, self._work_queue_name
+                )
 
             return item
 
@@ -162,11 +238,12 @@ class RedisBackend:
         def close(self):
             self._db.connection_pool.disconnect()
 
-    def __init__(self, host, port, db, name, namespace='queue'):
+    def __init__(self, host, port, db, name, namespace="queue"):
 
         self._rq = self.RedisQueue(name, host, port, db, namespace)
-        self._rq_res = self.RedisQueue(f'{name}:result', host,
-                                       port, db, namespace)
+        self._rq_res = self.RedisQueue(
+            f"{name}:result", host, port, db, namespace
+        )
 
     def put_job(self, serialized_job):
         self._rq.put(serialized_job)
@@ -188,8 +265,7 @@ class RedisBackend:
         self._rq_res.close()
 
 
-class RedisStore:
-
+class RedisStoreBackend:
     class RedisDict:
 
         """Database class to manage redis connection and read/write operations,
@@ -208,7 +284,7 @@ class RedisStore:
             try:
                 _ = self._db.dbsize()
             except ConnectionError as e:
-                self.log.warning('Connection to DB failed with error %s.', e)
+                self.log.warning("Connection to DB failed with error %s.", e)
 
         def write(self, key, dic):
             """Write dictionary to redis instance.
@@ -237,7 +313,7 @@ class RedisStore:
             """
             data = self._db.get(key)
             if data is None:
-                return json.loads('{}')
+                return json.loads("{}")
             return json.loads(data)
 
         def read_all(self):
@@ -247,7 +323,7 @@ class RedisStore:
             :return: A dictionary that contains all data.
             """
             items = self._db.keys()
-            return {k.decode('utf8'): self.read(k) for k in items}
+            return {k.decode("utf8"): self.read(k) for k in items}
 
     def __init__(self, host, port, db):
 
@@ -258,3 +334,73 @@ class RedisStore:
 
     def get_result(self, key):
         return self._rd.read(key)
+
+
+class RabbitMQBackend:
+
+    """Simple Queue with RabbitMQ Backend"""
+
+    def __init__(self, host, port, role, name, namespace="queue"):
+        """The default connection parameters are: host='localhost', port=5672
+        """
+        self._host, self._port = host, port
+        assert role in {"receiver", "sender"}, f"Unknown role {role}"
+        self._role = role
+        self._queue_name = f"{namespace}:{name}"
+        self._result_name = f"{namespace}:{name}:result"
+        # Blocking queues
+        self._jobs = queue.Queue()
+        self._results = queue.Queue()
+        threading.Thread(target=self._start, daemon=True).start()
+
+    def _get_channel(self):
+        channel = pika.BlockingConnection(
+            pika.ConnectionParameters(host=self._host, port=self._port)
+        ).channel()
+        return channel
+
+    def _get_job(self, ch, method, _, body):
+        self._jobs.put(body)
+        ch.basic_ack(delivery_tag=method.delivery_tag)
+
+    def _get_res(self, ch, method, _, body):
+        self._results.put(body)
+        ch.basic_ack(delivery_tag=method.delivery_tag)
+
+    def _start(self):
+        channel = self._get_channel()
+        channel.basic_qos(prefetch_count=1)
+        if self._role == "receiver":
+            channel.queue_declare(queue=self._queue_name, durable=True)
+            channel.basic_consume(
+                queue=self._queue_name, on_message_callback=self._get_job
+            )
+        else:
+            channel.queue_declare(queue=self._result_name, durable=True)
+            channel.basic_consume(
+                queue=self._result_name, on_message_callback=self._get_res
+            )
+        channel.start_consuming()
+
+    def put_job(self, serialized_job):
+        channel = self._get_channel()
+        channel.basic_publish("", self._queue_name, serialized_job)
+
+    def put_result(self, result):
+        channel = self._get_channel()
+        channel.basic_publish("", self._result_name, result)
+
+    def get_next_job(self, timeout=None):
+        try:
+            return self._jobs.get(timeout=timeout)
+        except queue.Empty:
+            return None
+
+    def get_available_result(self, timeout=None):
+        try:
+            return self._results.get(timeout=timeout)
+        except queue.Empty:
+            return None
+
+    def close(self):
+        pass

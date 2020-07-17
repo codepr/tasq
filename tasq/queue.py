@@ -7,17 +7,20 @@ The main client module, provides interfaces to instantiate queues
 from queue import Queue
 from threading import Thread
 from urllib.parse import urlparse
-from tasq.remote.backends.redis import RedisStore
-from tasq.remote.client import (ZMQTasqClient, RedisTasqClient,
-                                RabbitMQTasqClient, TasqFuture)
+from .remote.client import (
+    ZMQClient,
+    RedisClient,
+    RabbitMQClient,
+    TasqFuture,
+)
 
 
 backends = {
-    'redis': RedisTasqClient,
-    'amqp': RabbitMQTasqClient,
-    'unix': ZMQTasqClient,
-    'zmq': ZMQTasqClient,
-    'tcp': ZMQTasqClient
+    "redis": RedisClient,
+    "amqp": RabbitMQClient,
+    "unix": ZMQClient,
+    "zmq": ZMQClient,
+    "tcp": ZMQClient,
 }
 
 
@@ -26,17 +29,6 @@ class TasqQueue:
     """Main queue abstraction, accept a backend and a store as well as nothing
     fallbacking in the last case to the ZMQ client.
 
-    The formats accepted for the backends are:
-
-    - redis://localhost:6379/0?name=redis-queue
-    - amqp://localhost:5672?name=amqp-queue
-    - zmq://localhost:9000?plport=9010
-    - tcp://localhost:5555
-
-    For the store part currently only Redis is supported as a backend:
-
-    - redis://localhost:6379/1?name=results-store
-
     Attributes
     ----------
     :type backend: str or u'zmq://localhost:9000'
@@ -44,36 +36,15 @@ class TasqQueue:
 
     :type store: str or None
     :param store: An URL to connect to for the results store service
-
-    :type signkey: bool or False
-    :param signkey: A boolean flag, sign data with a shared key
-
     """
 
-    def __init__(self, backend=u'zmq://localhost:9000',
-                 store=None, signkey=None):
-
-        if isinstance(backend, str):
-            url = urlparse(backend)
-            scheme = url.scheme or 'zmq'
-            assert url.scheme in {'redis', 'zmq', 'amqp', 'unix', 'tcp'}, \
-                f"Unsupported {url.scheme}"
-            self._backend = backends[scheme].from_url(backend, signkey)
-        elif isinstance(backend,
-                        (ZMQTasqClient, RabbitMQTasqClient, RedisTasqClient)):
-            self._backend = backend
-        else:
-            print("Unsupported backend", backend)
+    def __init__(self, backend, store=None):
+        self._backend = backend
         # Handle only redis as a backend store for now
+        self._store = store
         if store:
-            urlstore = urlparse(store)
-            assert urlstore.scheme in {'redis'}, f"Unknown {scheme}"
-            db = int(urlstore.path.split('/')[-1]) if url.query else 0
-            self._store = RedisStore(urlstore.hostname, urlstore.port, db)
             self._results = Queue()
             Thread(target=self._store_results, daemon=True).start()
-        else:
-            self._store = store
         # Connect with the backend
         self._backend.connect()
 
@@ -88,6 +59,14 @@ class TasqQueue:
             else:
                 job_result = tasqfuture
             self._store.put_result(job_result)
+
+    def connect(self):
+        if not self._backend.is_connected():
+            self._backend.connect()
+
+    def disconnect(self):
+        if self._backend.is_connected():
+            self._backend.disconnect()
 
     def put(self, func, *args, **kwargs):
         tasq_result = self._backend.schedule(func, *args, **kwargs)

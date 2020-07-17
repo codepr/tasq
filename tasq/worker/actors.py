@@ -4,7 +4,6 @@ tasq.remote.actors.py
 This module contains all actors and routers as well used as workers for all
 tasks incoming from remote calls.
 """
-import asyncio
 from concurrent.futures import Future
 from ..actors.actor import Actor
 
@@ -55,7 +54,7 @@ class WorkerActor(Actor):
             self.name,
             self.mailbox_size,
         )
-        f = asyncio.Future()
+        f = Future()
         self.send((job, f))
         return f
 
