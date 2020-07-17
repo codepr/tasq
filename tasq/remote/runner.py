@@ -25,7 +25,7 @@ class Runner:
         self._signkey = signkey
         self._backend = backend
         self._workers = worker_factory()
-        self._run = True
+        self._run = False
         self._unpickle = unpickle
         self._log = get_logger(f"{__name__}-{os.getpid()}")
 
@@ -43,6 +43,7 @@ class Runner:
         """Blocking function, schedule the execution of the coroutine waiting
         for incoming tasks and run the asyncio loop forever
         """
+        self._run = True
         self.run()
 
     def run(self):
@@ -66,15 +67,18 @@ class ZMQRunner:
         self._backend = backend
         self._workers = worker_factory()
         self._unpickle = unpickle
+        self._run = False
         self._log = get_logger(f"{__name__}-{os.getpid()}")
         self._loop = asyncio.get_event_loop()
 
     def stop(self):
         """Stops the loop after canceling all remaining tasks"""
         self._log.info("\nStopping..")
+        self._run = False
         # Cancel pending tasks (opt)
         for task in asyncio.Task.all_tasks():
             task.cancel()
+        self._loop.stop()
         self._loop.close()
         # Stop server connection
         self._backend.stop()
@@ -84,16 +88,20 @@ class ZMQRunner:
         for incoming tasks and run the asyncio loop forever
         """
         self._backend.bind()
+        self._run = True
         self._loop.create_task(self.run())
         self._loop.run_forever()
 
     async def run(self):
-        while True:
-            if await self._backend.poll():
-                job = await self._backend.recv(unpickle=self._unpickle)
-                f = self._workers.route(job)
-                fut = asyncio.wrap_future(f)
-                await self._backend.send(await fut)
+        while self._run:
+            try:
+                if await self._backend.poll():
+                    job = await self._backend.recv(unpickle=self._unpickle)
+                    f = self._workers.route(job)
+                    fut = asyncio.wrap_future(f)
+                    await self._backend.send(await fut)
+            except asyncio.CancelledError:
+                pass
 
 
 class Runners:
