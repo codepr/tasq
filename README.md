@@ -42,9 +42,9 @@ Type 'copyright', 'credits' or 'license' for more information
 IPython 7.4.0 -- An enhanced Interactive Python. Type '?' for help.
 Warning: disable autoreload in ipython_config.py to improve performance.
 
-In [1]: from tasq.queue import TasqQueue
+In [1]: import tasq
 
-In [2]: tq = TasqQueue(backend='redis://localhost:6379')
+In [2]: tq = tasq.queue('redis://localhost:6379')
 
 In [3]: def fib(n):
    ...:     if n == 0:
@@ -73,7 +73,7 @@ Out[9]: 12586269025
 Scheduling jobs after a delay
 ```python
 
-In [10]: fut = tc.schedule(fib, 5, name='fib-delayed', delay=5)
+In [10]: fut = tq.put(fib, 5, name='fib-delayed', delay=5)
 
 In [11]: fut
 Out[11]: <TasqFuture at 0x7f2951856418 state=pending>
