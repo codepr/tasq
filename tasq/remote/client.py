@@ -88,10 +88,6 @@ class Client(ABC):
         return self._port
 
     @property
-    def is_connected(self):
-        return self._is_connected
-
-    @property
     def pending(self):
         return self._pending
 
@@ -100,7 +96,7 @@ class Client(ABC):
         return self._results
 
     def __enter__(self):
-        if not self.is_connected:
+        if not self.is_connected():
             self.connect()
         return self
 
@@ -108,6 +104,9 @@ class Client(ABC):
         while self.pending_results():
             pass
         self.close()
+
+    def is_connected(self):
+        return self._is_connected
 
     @abstractmethod
     def connect(self):
@@ -123,7 +122,7 @@ class Client(ABC):
 
     def close(self):
         """Close sockets connected to workers, destroy zmq cotext"""
-        if self.is_connected:
+        if self.is_connected():
             self.disconnect()
         self._client.close()
 
@@ -153,7 +152,7 @@ class Client(ABC):
         name = kwargs.pop("name", "")
         job = Job(name, func, *args, **kwargs)
         # If not connected enqueue for execution at the first connection
-        if not self.is_connected:
+        if not self.is_connected():
             self._log.debug(
                 "Client not connected, appending job to pending queue."
             )
@@ -162,6 +161,8 @@ class Client(ABC):
         # Create a Future and return it, _gatherer thread will set the
         # result once received
         future = TasqFuture()
+        if name in self._results:
+            self._results.pop(name)
         self._results[name] = future
         # Send job to worker
         self._client.send(job)
@@ -184,7 +185,7 @@ class Client(ABC):
         :raise: tasq.remote.client.ClientNotConnected, in case of not
                 connected client
         """
-        if not self.is_connected:
+        if not self.is_connected():
             raise ClientNotConnected("Client not connected to no worker")
         timeout = kwargs.pop("timeout", None)
         future = self.schedule(func, *args, **kwargs)
@@ -238,7 +239,7 @@ class ZMQClient(Client):
 
     def __repr__(self):
         socket_type = "tcp" if not self._unix_socket else "unix"
-        status = "connected" if self.is_connected else "disconnected"
+        status = "connected" if self.is_connected() else "disconnected"
         return (
             f"<ZMQClient worker=({socket_type}://{self.host}:{self.port}, "
             f"{socket_type}://{self.host}:{self.plport}) status={status}>"
@@ -265,7 +266,7 @@ class ZMQClient(Client):
         """Connect to the remote workers, setting up PUSH and PULL channels,
         respectively used to send tasks and to retrieve results back
         """
-        if self.is_connected:
+        if self.is_connected():
             return
         if not self._client:
             self._client = ZMQBackendConnection(
@@ -293,7 +294,7 @@ class ZMQClient(Client):
 
     def disconnect(self):
         """Disconnect PUSH and PULL sockets"""
-        if self.is_connected:
+        if self.is_connected():
             self._gather_loop.set()
             self._gatherer.join()
             self._client.disconnect()
@@ -362,7 +363,7 @@ class RedisClient(Client):
         return self._name
 
     def __repr__(self):
-        status = "connected" if self.is_connected else "disconnected"
+        status = "connected" if self.is_connected() else "disconnected"
         return (
             f"<RedisClient worker=(redis://{self.host}:{self.port}, "
             f"redis://{self.host}:{self.port}) status={status}>"
@@ -389,7 +390,7 @@ class RedisClient(Client):
         """Connect to the remote workers, setting up PUSH and PULL channels,
         respectively used to send tasks and to retrieve results back
         """
-        if self.is_connected:
+        if self.is_connected():
             return
         if not self._client:
             self._client = connect_redis_backend(
@@ -415,7 +416,7 @@ class RedisClient(Client):
 
     def disconnect(self):
         """Disconnect PUSH and PULL sockets"""
-        if self.is_connected:
+        if self.is_connected():
             self._gather_loop.set()
             self._gatherer.join()
             self._is_connected = False
@@ -474,7 +475,7 @@ class RabbitMQClient(Client):
         return self._name
 
     def __repr__(self):
-        status = "connected" if self.is_connected else "disconnected"
+        status = "connected" if self.is_connected() else "disconnected"
         return (
             f"<RabbitMQClient worker=(amqp://{self.host}:{self.port}) "
             f"status={status}>"
@@ -503,7 +504,7 @@ class RabbitMQClient(Client):
         """Connect to the remote workers, setting up PUSH and PULL channels,
         respectively used to send tasks and to retrieve results back
         """
-        if self.is_connected:
+        if self.is_connected():
             return
         if not self._client:
             self._client = connect_rabbitmq_backend(
@@ -530,7 +531,7 @@ class RabbitMQClient(Client):
 
     def disconnect(self):
         """Disconnect PUSH and PULL sockets"""
-        if self.is_connected:
+        if self.is_connected():
             self._gather_loop.set()
             self._gatherer.join()
             self._is_connected = False
@@ -613,7 +614,7 @@ class ClientPool:
             if idx == len(self._clients) - 1:
                 idx = 0
             # Lazy check for connection
-            if not self._clients[idx].is_connected:
+            if not self._clients[idx].is_connected():
                 self._clients[idx].connect()
             self._clients[idx].schedule(func, *args, **kwargs)
 

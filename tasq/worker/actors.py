@@ -95,42 +95,6 @@ class WorkerActor(Actor):
                 future.set_result(response)
 
 
-class ResponseActor(Actor):
-
-    """Response actor, it's task is to answer back to the client by leveraging
-    the PUSH/PULL communication pattern offered by ZMQ sockets
-
-    Attributes
-    ----------
-    :type name: str or ''
-    :param name: The name of the actor, this should uniquely identify it
-
-    :type ctx: actorsystem.ActorSystem or None
-    :param ctx: Context variable which can be used to spawn additional actors,
-                generally this is the ActorSystem singleton which rules the
-                entire fleet of actors.
-
-    :type response_actor: tasq.actors.actor.Actor or None
-    :param response_actor: Instance of an Actor responsible for communication
-                           with the requesting client
-
-    :type sendfunc: function
-    "param sendfunc: The sending function, as the respond-responsible function
-                     to call to communicate results to a client
-
-    """
-
-    def __init__(self, name="", ctx=None, *, sendfunc=None):
-        self._sendfunc = sendfunc
-        super().__init__(name, ctx)
-
-    def run(self):
-        """Send response back to connected clients by using ZMQ PUSH channel"""
-        while True:
-            res = self.recv()
-            self._sendfunc(res.result())
-
-
 class TimedActor(Actor):
 
     """Actor designed to run only a single task every defined datetime"""
@@ -259,7 +223,7 @@ class ClientWorker(Actor):
             job, future = self.recv()
             self._log.debug("Received %s", job)
             self._log.debug("%s - executing job %s", self.name, job.job_id)
-            if not self._client.is_connected:
+            if not self._client.is_connected():
                 self._client.connect()
             fut = self._client.schedule(
                 job.func, *job.args, name=job.job_id, **job.kwargs
