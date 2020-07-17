@@ -28,7 +28,7 @@ try it in production enviroments.
 Starting a worker on a node using Redis as backend
 
 ```sh
-$ tq redis-worker --log-level DEBUG
+$ tq redis-runner --log-level DEBUG
 2019-04-26 23:15:28 - tasq.remote.supervisor-17903: Worker type: Actor
 ```
 

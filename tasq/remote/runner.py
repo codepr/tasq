@@ -34,7 +34,7 @@ class Runner:
 
     def stop(self):
         """Stops the loop after canceling all remaining tasks"""
-        self._log.info("\nStopping..")
+        self._log.info("Stopping..")
         # Stop server connection
         self._run = False
         self._backend.stop()
@@ -73,7 +73,7 @@ class ZMQRunner:
 
     def stop(self):
         """Stops the loop after canceling all remaining tasks"""
-        self._log.info("\nStopping..")
+        self._log.info("Stopping..")
         self._run = False
         # Cancel pending tasks (opt)
         for task in asyncio.Task.all_tasks():

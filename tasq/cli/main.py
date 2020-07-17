@@ -4,9 +4,12 @@ tasq.cli.main.py
 """
 
 import argparse
-from ..logger import logger
+from ..logger import logger, get_logger
 from ..settings import get_config
 from ..remote.runner import runner_factory
+
+
+log = get_logger(__name__)
 
 
 class UnknownRunnerException(Exception):
@@ -30,7 +33,11 @@ runners = {
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Tasq CLI")
     parser.add_argument(
-        "runner_type", choices=["runner", "redis-runner", "rabbitmq-runner"]
+        "runner_type",
+        nargs="?",
+        default="runner",
+        choices=["runner", "redis-runner", "rabbitmq-runner"],
+        help="Set runner type, can be one between [runner | redis-runner | rabbitmq-runner]",
     )
     parser.add_argument(
         "--conf", "-c", help="The filepath to the configuration file, in json",
@@ -92,6 +99,11 @@ def start_worker(runner_type, worker_type, host, **kwargs):
     except KeyError:
         raise UnknownRunnerException()
     try:
+        log.info(
+            "Starting %s runner type with %s worker type",
+            runner_type.upper(),
+            worker_type.upper(),
+        )
         runner = runner_factory.create(s_type, host=host, **kwargs)
         runner.start()
     except KeyboardInterrupt:
@@ -145,4 +157,5 @@ def main():
             name=name,
             num_workers=num_workers,
             signkey=signkey,
+            role="receiver",
         )
