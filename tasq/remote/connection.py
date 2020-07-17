@@ -93,6 +93,9 @@ class BackendConnection:
     def get_pending_jobs(self):
         return self._backend.get_pending_jobs()
 
+    def stop(self):
+        self.close()
+
     def close(self):
         self._backend.close()
 

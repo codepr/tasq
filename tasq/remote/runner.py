@@ -226,7 +226,9 @@ def build_redis_queue_runner(
     server = connect_redis_backend(
         host, port, db, name, namespace, signkey=signkey
     )
-    return Runner(server, lambda: worker.build_jobqueue(num_workers), False, signkey)
+    return Runner(
+        server, lambda: worker.build_jobqueue(num_workers), False, signkey
+    )
 
 
 def build_rabbitmq_actor_runner(
@@ -264,7 +266,9 @@ def build_rabbitmq_queue_runner(
     server = connect_rabbitmq_backend(
         host, port, role, name, namespace, signkey=signkey
     )
-    return Runner(server, lambda: worker.build_jobqueue(num_workers), False, signkey)
+    return Runner(
+        server, lambda: worker.build_jobqueue(num_workers), False, signkey
+    )
 
 
 runner_factory = RunnerFactory()

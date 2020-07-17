@@ -260,6 +260,9 @@ class RedisBackend:
     def get_pending_jobs(self):
         return self._rq.list_pending_items(), self._rq.list_working_items()
 
+    def stop(self):
+        self.close()
+
     def close(self):
         self._rq.close()
         self._rq_res.close()
@@ -401,6 +404,9 @@ class RabbitMQBackend:
             return self._results.get(timeout=timeout)
         except queue.Empty:
             return None
+
+    def stop(self):
+        pass
 
     def close(self):
         pass
