@@ -5,6 +5,7 @@ This module contains all actors and routers as well used as workers for all
 tasks incoming from remote calls.
 """
 from concurrent.futures import Future
+from ..job import JobResult
 from ..actors.actor import Actor
 
 
@@ -29,11 +30,8 @@ class WorkerActor(Actor):
 
     """
 
-    def __init__(self, name="", ctx=None, response_actor=None):
+    def __init__(self, name="", ctx=None):
         super().__init__(name, ctx)
-        # self._response_actor = response_actor or ctx.actor_of(
-        #     ResponseActor, f"ResponseActor - {name}"
-        # )
 
     def submit(self, job):
         """Submits a job object to the run loop of the actor, returning
@@ -70,12 +68,11 @@ class WorkerActor(Actor):
             if "eta" in job.kwargs:
                 eta = job.kwargs.pop("eta")
                 timed_actor = self._ctx.actor_of(
-                    TimedActor,
-                    "TimedActor - " + job.job_id,
-                    response_actor=self._response_actor,
+                    TimedActor, "TimedActor - " + job.job_id
                 )
                 timed_actor.start()
                 timed_actor.submit(job, eta)
+                future.set_result(JobResult(job.job_id, 0))
             else:
                 self._log.debug("%s - executing job %s", self.name, job.job_id)
                 response = job.execute()
@@ -99,12 +96,7 @@ class TimedActor(Actor):
 
     """Actor designed to run only a single task every defined datetime"""
 
-    def __init__(self, name="", ctx=None, response_actor=None):
-        self._response_actor = response_actor or self._ctx.actor_of(
-            ResponseActor, "TimedActor - ResponseActor"
-        )
-        if isinstance(self._response_actor, Actor):
-            self._response_actor.start()
+    def __init__(self, name="", ctx=None):
         super().__init__(name, ctx)
 
     def submit(self, job, eta):
@@ -170,10 +162,6 @@ class TimedActor(Actor):
                 "%s - Timed job %s result = %s", self.name, job.job_id, jobres
             )
             result.set_result(response)
-            if isinstance(self._response_actor, Actor):
-                self._response_actor.send(result)
-            else:
-                self._response_actor.route(result)
             self.submit(job, str(job.delay) + "s")
 
 

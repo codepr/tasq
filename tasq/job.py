@@ -125,13 +125,19 @@ class Job:
             exc = sys.exc_info()[0]
         finally:
             self._end_time = time.time()
-        return JobResult(self.job_id, outcome, result, exc, self.execution_time())
+        return JobResult(
+            self.job_id, outcome, result, exc, self.execution_time()
+        )
 
     def __repr__(self):
         args = ", ".join(str(i) for i in self.args)
-        kwargs = ", ".join(key + "=" + repr(self.kwargs[key]) for key in self.kwargs)
+        kwargs = ", ".join(
+            key + "=" + repr(self.kwargs[key]) for key in self.kwargs
+        )
         arguments = f"({', '.join([args])}{', '.join([kwargs])})"
-        arguments = (arguments[:80] + "...)") if len(arguments) > 80 else arguments
+        arguments = (
+            (arguments[:80] + "...)") if len(arguments) > 80 else arguments
+        )
         if self.delay:
             arguments += f" delay: {self.delay}"
         return f"job ID: {self.job_id} - {self.func.__name__}{arguments}"
@@ -149,6 +155,6 @@ class JobResult:
 
     name: str
     outcome: JobStatus
-    value: Optional[Any]
-    exc: Optional[Exception]
-    exec_time: Optional[float]
+    value: Optional[Any] = None
+    exc: Optional[Exception] = None
+    exec_time: Optional[float] = 0.0
