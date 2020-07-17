@@ -60,6 +60,9 @@ class TasqQueue:
                 job_result = tasqfuture
             self._store.put_result(job_result)
 
+    def is_connected(self):
+        return self._backend.is_connected()
+
     def connect(self):
         if not self._backend.is_connected():
             self._backend.connect()

@@ -8,14 +8,14 @@ available.
 import sys
 import uuid
 import signal
-from abc import ABCMeta, abstractmethod
+from abc import ABC, abstractmethod
 from multiprocessing import Process
 
 import tasq.remote.serializer as serde
 from ..logger import get_logger
 
 
-class Executor(metaclass=ABCMeta):
+class Executor(ABC):
 
     """Generic worker class, contains a job queue and handle incoming jobs for
     execution, should be mixed-in with a Process class
