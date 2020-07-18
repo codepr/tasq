@@ -6,22 +6,7 @@ The main client module, provides interfaces to instantiate queues
 
 from queue import Queue
 from threading import Thread
-from urllib.parse import urlparse
-from .remote.client import (
-    ZMQClient,
-    RedisClient,
-    RabbitMQClient,
-    TasqFuture,
-)
-
-
-backends = {
-    "redis": RedisClient,
-    "amqp": RabbitMQClient,
-    "unix": ZMQClient,
-    "zmq": ZMQClient,
-    "tcp": ZMQClient,
-}
+from .remote.client import TasqFuture
 
 
 class TasqQueue:
@@ -47,6 +32,9 @@ class TasqQueue:
             Thread(target=self._store_results, daemon=True).start()
         # Connect with the backend
         self._backend.connect()
+
+    def __repr__(self):
+        return f"TasqQueue({self._backend})"
 
     def __len__(self):
         return len(self.pending_jobs())

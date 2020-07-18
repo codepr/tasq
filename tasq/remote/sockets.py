@@ -97,6 +97,9 @@ class BackendSocket:
     def __init__(self, backend):
         self._backend = backend
 
+    def __repr__(self):
+        return f"BackendSocket({self._backend})"
+
     def get_pending_jobs(self):
         """Return a list of pending jobs, or either a tuple with a list of
         pending jobs and a list of working pending jobs (jobs that are started

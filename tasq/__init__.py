@@ -1,8 +1,9 @@
 from urllib.parse import urlparse
 from tasq.queue import TasqQueue
+from tasq.remote.connection import ZMQBackendConnection, BackendConnection
 from tasq.worker.jobqueue import JobQueue
 from tasq.worker.executor import ProcessQueueExecutor
-from tasq.remote.client import ZMQClient, RedisClient, RabbitMQClient
+from tasq.remote.client import Client
 from tasq.remote.backend import RedisStoreBackend
 from tasq.remote.runner import Runners
 
@@ -15,11 +16,11 @@ __status__ = "Development"
 
 
 _backends = {
-    "redis": RedisClient,
-    "amqp": RabbitMQClient,
-    "unix": ZMQClient,
-    "zmq": ZMQClient,
-    "tcp": ZMQClient,
+    "redis": BackendConnection,
+    "amqp": BackendConnection,
+    "unix": ZMQBackendConnection,
+    "zmq": ZMQBackendConnection,
+    "tcp": ZMQBackendConnection,
 }
 
 
@@ -30,7 +31,7 @@ def queue(url="zmq://localhost:9000", store=None, signkey=None):
 
     - redis://localhost:6379/0?name=redis-queue
     - amqp://localhost:5672?name=amqp-queue
-    - zmq://localhost:9000?plport=9010
+    - zmq://localhost:9000?pull_port=9010
     - tcp://localhost:5555
 
     For the store part currently only Redis is supported as a backend:
@@ -52,9 +53,10 @@ def queue(url="zmq://localhost:9000", store=None, signkey=None):
     scheme = url_parsed.scheme or "zmq"
     assert scheme in _backends, f"Unsupported {url.scheme} as backend"
     backend = _backends[scheme].from_url(url, signkey)
+    client = Client(backend)
     if store:
         urlstore = urlparse(store)
         assert urlstore.scheme in {"redis"}, f"Unknown {scheme} as store"
         db = int(urlstore.path.split("/")[-1]) if url.query else 0
         store = RedisStoreBackend(urlstore.hostname, urlstore.port, db)
-    return TasqQueue(backend, store)
+    return TasqQueue(client, store)

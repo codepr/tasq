@@ -6,8 +6,10 @@ This module contains classes to define connections using zmq sockets.
 """
 
 import zmq
+from urllib.parse import urlparse
 from .backend import RedisBackend, RabbitMQBackend
 from .sockets import CloudPickleContext, BackendSocket
+from ..exception import BackendCommunicationErrorException
 
 
 class ZMQBackendConnection:
@@ -30,6 +32,12 @@ class ZMQBackendConnection:
         self._ctx = CloudPickleContext()
         self._push_socket = self._ctx.socket(zmq.PUSH)
         self._pull_socket = self._ctx.socket(zmq.PULL)
+
+    def __repr__(self):
+        protocol = "unix" if self._unix else "zmq"
+        return (
+            f"ZMQBackendConnection({protocol}://{self._host}:{self._channel})"
+        )
 
     def connect(self):
         """Connect to the remote workers, setting up PUSH and PULL channels
@@ -58,19 +66,55 @@ class ZMQBackendConnection:
         """Send data through the PUSH socket, if a signkey flag is set it sign
         it before sending
         """
-        self._push_socket.send_data(data, flags, self._signkey)
+        try:
+            self._push_socket.send_data(data, flags, self._signkey)
+        except (zmq.error.ContextTerminated, zmq.error.ZMQError) as e:
+            raise BackendCommunicationErrorException(str(e))
 
     def recv(self, unpickle=True, flags=0):
         """Receive data from the PULL socket, if a signkey flag is set it
         checks for integrity of the received data
         """
-        return self._pull_socket.recv_data(unpickle, flags, self._signkey)
+        try:
+            data = self._pull_socket.recv_data(unpickle, flags, self._signkey)
+        except (zmq.error.ContextTerminated, zmq.error.ZMQError) as e:
+            raise BackendCommunicationErrorException(str(e))
+        else:
+            return data
+
+    def recv_result(self, unpickle=True, flags=0):
+        return self.recv(unpickle, flags)
+
+    @classmethod
+    def from_url(cls, url, signkey=None):
+        u = urlparse(url)
+        scheme = u.scheme or "zmq"
+        assert scheme in ("zmq", "unix", "tcp"), f"Unsupported {scheme}"
+        extras = {
+            t.split("=")[0]: t.split("=")[1] for t in u.query.split("?") if t
+        }
+        extras = {k: v for k, v in extras.items() if k == "pull_port"}
+        conn_args = {
+            "host": u.hostname or "127.0.0.1",
+            "push_port": u.port or 9000,
+            "pull_port": int(extras.get("pull_port", (u.port or 9000) + 1)),
+            "signkey": signkey,
+            "unix": scheme == "unix",
+            "signkey": signkey,
+        }
+        return cls(**conn_args)
 
 
 class BackendConnection:
     def __init__(self, backend, signkey=None):
         self._backend = BackendSocket(backend)
         self._signkey = signkey
+
+    def __repr__(self):
+        return f"BackendConnection({self._backend})"
+
+    def connect(self):
+        pass
 
     def send(self, data):
         """Send data through the PUSH socket, if a signkey flag is set it sign
@@ -98,6 +142,34 @@ class BackendConnection:
 
     def close(self):
         self._backend.close()
+
+    @classmethod
+    def from_url(cls, url, signkey=None):
+        u = urlparse(url)
+        scheme = u.scheme or "redis"
+        assert scheme in ("redis", "amqp"), f"Unsupported {scheme}"
+        extraparams = {
+            t.split("=")[0]: t.split("=")[1] for t in u.query.split("?") if t
+        }
+        extraparams = {
+            k: v for k, v in extraparams.items() if k in {"name", "db"}
+        }
+        name = extraparams.get(
+            "name", "amqp-queue" if scheme == "amqp" else "redis-queue"
+        )
+        conn_args = {
+            "host": u.hostname or "localhost",
+            "port": u.port or 6379,
+            "db": int(extraparams.get("db", 0)),
+            "name": name,
+        }
+        if scheme == "redis":
+            conn_args["db"] = int(extraparams.get("db", 0))
+            backend = RedisBackend(**conn_args)
+        else:
+            conn_args["role"] = extraparams.get("role", "sender")
+            backend = RabbitMQBackend(**conn_args)
+        return cls(backend, signkey)
 
 
 def connect_redis_backend(

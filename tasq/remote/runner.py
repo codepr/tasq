@@ -51,6 +51,7 @@ class Runner:
             job = self._backend.recv(5, unpickle=self._unpickle)
             if not job:
                 continue
+            self._log.debug("Received job: %s", job)
             fut = self._workers.route(job)
             fut.add_done_callback(self._respond)
 
@@ -97,6 +98,7 @@ class ZMQRunner:
             try:
                 if await self._backend.poll():
                     job = await self._backend.recv(unpickle=self._unpickle)
+                    self._log.debug("Received job: %s", job)
                     f = self._workers.route(job)
                     fut = asyncio.wrap_future(f)
                     await self._backend.send(await fut)
@@ -109,7 +111,7 @@ class Runners:
     """Class to handle a pool of runners on the same node"""
 
     def __init__(self, binds, signkey=None, unix_socket=False):
-        # List of tuples (host, pport, plport) to bind to
+        # List of tuples (host, pport, pull_port) to bind to
         self._binds = binds
         # Digital sign data before send an receive it
         self._signkey = signkey

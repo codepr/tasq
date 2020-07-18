@@ -10,13 +10,7 @@ import zlib
 import hashlib
 from typing import Any
 import cloudpickle
-
-
-class SignatureNotValidException(Exception):
-
-    """Ad-hoc exception for invalid digest signature which doesn't pass the
-    verification
-    """
+from ..exception import SignatureNotValidException
 
 
 def dumps(data: Any) -> bytes:

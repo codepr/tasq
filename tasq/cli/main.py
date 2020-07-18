@@ -7,13 +7,10 @@ import argparse
 from ..logger import logger, get_logger
 from ..settings import get_config
 from ..remote.runner import runner_factory
+from ..exception import UnknownRunnerException
 
 
 log = get_logger(__name__)
-
-
-class UnknownRunnerException(Exception):
-    pass
 
 
 runners = {
