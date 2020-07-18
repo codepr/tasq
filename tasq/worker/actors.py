@@ -1,9 +1,11 @@
 """
-tasq.remote.actors.py
+tasq.worker.actors.py
 ~~~~~~~~~~~~~~~~~~~~~
+
 This module contains all actors and routers as well used as workers for all
 tasks incoming from remote calls.
 """
+
 from concurrent.futures import Future
 from ..job import JobResult
 from ..actors.actor import Actor

@@ -98,7 +98,6 @@ class ZMQBackendConnection:
             "host": u.hostname or "127.0.0.1",
             "push_port": u.port or 9000,
             "pull_port": int(extras.get("pull_port", (u.port or 9000) + 1)),
-            "signkey": signkey,
             "unix": scheme == "unix",
             "signkey": signkey,
         }
@@ -160,7 +159,6 @@ class BackendConnection:
         conn_args = {
             "host": u.hostname or "localhost",
             "port": u.port or 6379,
-            "db": int(extraparams.get("db", 0)),
             "name": name,
         }
         if scheme == "redis":

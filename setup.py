@@ -22,7 +22,7 @@ setup(
     long_description=readme,
     author="Andrea Giacomo Baldan",
     author_email="a.g.baldan@gmail.com",
-    packages=["tasq", "tasq.actors", "tasq.remote", "tasq.cli"],
+    packages=["tasq", "tasq.actors", "tasq.remote", "tasq.cli", "tasq.worker"],
     install_requires=required,
     scripts=["tq"],
     test_suite="setup.test_suite",

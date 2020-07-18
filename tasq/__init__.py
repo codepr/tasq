@@ -21,6 +21,7 @@ _backends = {
     "unix": ZMQBackendConnection,
     "zmq": ZMQBackendConnection,
     "tcp": ZMQBackendConnection,
+    "ipc": ZMQBackendConnection,
 }
 
 
@@ -46,8 +47,9 @@ def queue(url="zmq://localhost:9000", store=None, signkey=None):
     :type store: str or None
     :param store: An URL to connect to for the results store service
 
-    :type signkey: bool or False
-    :param signkey: A boolean flag, sign data with a shared key
+    :type signkey: str or None
+    :param signkey: A string representing a shared key, sign data with a shared
+                    key
     """
     url_parsed = urlparse(url)
     scheme = url_parsed.scheme or "zmq"
