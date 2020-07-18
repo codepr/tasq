@@ -1,14 +1,7 @@
-import unittest
 from setuptools import setup
 
 with open("README.md") as readme_file:
     readme = readme_file.read()
-
-
-def test_suite():
-    test_loader = unittest.TestLoader()
-    tests = test_loader.discover("tests", pattern="*_test.py")
-    return tests
 
 
 # Dependencies
@@ -25,5 +18,5 @@ setup(
     packages=["tasq", "tasq.actors", "tasq.remote", "tasq.cli", "tasq.worker"],
     install_requires=required,
     scripts=["tq"],
-    test_suite="setup.test_suite",
+    test_suite="tests",
 )

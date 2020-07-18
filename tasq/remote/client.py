@@ -9,8 +9,6 @@ from concurrent.futures import Future
 from concurrent.futures._base import InvalidStateError
 from threading import Thread, Event
 from collections import deque
-import tasq.worker as worker
-import tasq.actors as actors
 from ..job import Job, JobStatus
 from ..logger import get_logger
 from ..exception import (
