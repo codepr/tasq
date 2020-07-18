@@ -49,10 +49,10 @@ class Client:
                     through sockets
     """
 
-    def __init__(self, client):
+    def __init__(self, connection):
         # Client backend dependency, can be a ZMQBackendConnection or a generic
         # BackendConnection for backends other than ZMQ
-        self._client = client
+        self._connection = connection
         # Connection flag
         self._is_connected = False
         # Results dictionary, mapping task_name -> result
@@ -67,7 +67,7 @@ class Client:
         self._log = get_logger(__name__)
 
     def __repr__(self):
-        return f"Client({self._client})"
+        return f"Client({self._connection})"
 
     def __enter__(self):
         if not self.is_connected():
@@ -85,7 +85,7 @@ class Client:
         """
         while not self._gather_loop.is_set():
             try:
-                job_result = self._client.recv_result()
+                job_result = self._connection.recv_result()
             except BackendCommunicationErrorException:
                 self._log.warning("Backend error while receiving results back")
             else:
@@ -123,7 +123,7 @@ class Client:
             self._gather_loop.clear()
             # Start gathering thread
             self._gatherer.start()
-        self._client.connect()
+        self._connection.connect()
         self._is_connected = True
         # Check if there are pending requests and in case, empty the queue
         while self._pending:
@@ -135,7 +135,7 @@ class Client:
         if self.is_connected():
             self._gather_loop.set()
             self._gatherer.join()
-            self._client.disconnect()
+            self._connection.disconnect()
             self._is_connected = False
 
     def schedule(self, func, *args, **kwargs):
@@ -169,7 +169,7 @@ class Client:
             self._results.pop(name)
         self._results[name] = future
         # Send job to worker
-        self._client.send(job)
+        self._connection.send(job)
         return future
 
     def schedule_blocking(self, func, *args, **kwargs):
