@@ -9,7 +9,7 @@ from tasq.remote.runner import Runners
 
 __author__ = "Andrea Giacomo Baldan"
 __license__ = "GPL v3"
-__version__ = "1.2.1"
+__version__ = "1.2.2"
 __maintainer__ = "Andrea Giacomo Baldan"
 __email__ = "a.g.baldan@gmail.com"
 __status__ = "Development"

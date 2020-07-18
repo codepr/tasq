@@ -6,6 +6,7 @@ remote workers.
 """
 
 from concurrent.futures import Future
+from concurrent.futures._base import InvalidStateError
 from threading import Thread, Event
 from collections import deque
 import tasq.worker as worker
@@ -101,6 +102,8 @@ class Client:
                         "Can't update result: key %s not found",
                         job_result.name,
                     )
+                except InvalidStateError:
+                    self._log.warning("Result already gathered, discarding it")
 
     def is_connected(self):
         return self._is_connected
