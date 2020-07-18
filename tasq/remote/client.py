@@ -86,8 +86,10 @@ class Client:
         while not self._gather_loop.is_set():
             try:
                 job_result = self._connection.recv_result()
-            except BackendCommunicationErrorException:
-                self._log.warning("Backend error while receiving results back")
+            except BackendCommunicationErrorException as e:
+                self._log.warning(
+                    "Backend error while receiving results back: %s", str(e)
+                )
             else:
                 if not job_result:
                     continue
@@ -95,7 +97,10 @@ class Client:
                 try:
                     self._results[job_result.name].set_result(job_result)
                 except KeyError:
-                    self._log.error("Can't update result: key not found")
+                    self._log.error(
+                        "Can't update result: key %s not found",
+                        job_result.name,
+                    )
 
     def is_connected(self):
         return self._is_connected
@@ -133,9 +138,9 @@ class Client:
     def disconnect(self):
         """Disconnect PUSH and PULL sockets"""
         if self.is_connected():
+            self._connection.disconnect()
             self._gather_loop.set()
             self._gatherer.join()
-            self._connection.disconnect()
             self._is_connected = False
 
     def schedule(self, func, *args, **kwargs):
@@ -153,8 +158,8 @@ class Client:
         :return: A future eventually containing the result of the func
                  execution
         """
-        name = kwargs.pop("name", "")
-        job = Job(name, func, *args, **kwargs)
+        job = Job(kwargs.pop("name", ""), func, *args, **kwargs)
+        name = job.job_id
         # If not connected enqueue for execution at the first connection
         if not self.is_connected():
             self._log.debug(
