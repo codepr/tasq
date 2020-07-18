@@ -1,6 +1,8 @@
 Tasq
 ====
 
+![tasq](https://github.com/codepr/tasq/workflows/tasq/badge.svg)
+
 Very simple distributed Task queue that allow the scheduling of job functions
 to be executed on local or remote workers. Can be seen as a Proof of Concept
 leveraging ZMQ sockets and cloudpickle serialization capabilities as well as a
