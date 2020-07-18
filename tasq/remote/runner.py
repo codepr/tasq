@@ -124,14 +124,15 @@ class Runners:
         self._init_binds()
 
     def _serve_runner(self, host, psh_port, pl_port):
-        m = ZMQActorRunner(
-            host,
-            psh_port,
-            pl_port,
-            signkey=self._signkey,
-            unix_socket=self._unix_socket,
-        )
-        m.start()
+        pass
+        # m = ZMQActorRunner(
+        #     host,
+        #     psh_port,
+        #     pl_port,
+        #     signkey=self._signkey,
+        #     unix_socket=self._unix_socket,
+        # )
+        # m.start()
 
     def _init_binds(self):
         self._procs = [

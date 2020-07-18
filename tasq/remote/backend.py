@@ -345,7 +345,7 @@ class RedisStoreBackend:
         self._db = db
 
     def __repr__(self):
-        return f"RedisStoreBackend(redis://{self_host}:{self._port}/{self._db}"
+        return f"RedisStoreBackend(redis://{self._host}:{self._port}/{self._db}"
 
     def put_result(self, job_result):
         self._rd.write(job_result.name, job_result.value or job_result.exc)

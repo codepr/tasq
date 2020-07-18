@@ -207,87 +207,87 @@ class Client:
         return result
 
 
-class ClientPool:
-
-    """Basic client pool, defining methods to talk to multiple remote
-    workers
-    """
-
-    # TODO WIP - still a rudimentary implementation
-
-    def __init__(self, config, router_class=actors.RoundRobinRouter):
-        # List of tuples defining host:port pairs to connect
-        self._config = config
-        # Router class
-        self._router_class = router_class
-        # Pool of clients
-        self._clients = [
-            ZMQClient(host, psport, pull_port)
-            for host, psport, pull_port in self._config
-        ]
-        # Collect results in a dictionary
-        self._results = {}
-        # Workers actor system
-        self._system = actors.get_actorsystem("clientpool-actorsystem")
-        # Workers pool
-        self._workers = self._system.router_of(
-            num_workers=len(self._clients),
-            actor_class=worker.ClientWorker,
-            router_class=self._router_class,
-            clients=self._clients,
-        )
-
-    @property
-    def router_class(self):
-        return self._router_class
-
-    @property
-    def results(self):
-        """Lazily check for new results and add them to the list of
-        dictionaries before returning it
-        """
-        return self._results
-
-    def __iter__(self):
-        return self._clients.__iter__()
-
-    def shutdown(self):
-        """Close all connected clients"""
-        for client in self._clients:
-            client.close()
-        self._system.shutdown()
-
-    def map(self, func, iterable):
-        """Schedule a list of jobs represented by `iterable` in a round-robin
-        manner. Can be seen as equivalent as schedule with `RoundRobinRouter`
-        routing.
-        """
-        idx = 0
-        for args, kwargs in iterable:
-            if idx == len(self._clients) - 1:
-                idx = 0
-            # Lazy check for connection
-            if not self._clients[idx].is_connected():
-                self._clients[idx].connect()
-            self._clients[idx].schedule(func, *args, **kwargs)
-
-    def schedule(self, func, *args, **kwargs):
-        """Schedule a job to a remote worker, without blocking. Require a
-        func task, and arguments to be passed with, cloudpickle will handle
-        dependencies shipping. Optional it is possible to give a name to the
-        job, otherwise a UUID will be defined
-        """
-        name = kwargs.pop("name", "")
-        job = Job(name, func, *args, **kwargs)
-        future = self._workers.route(job)
-        self._results[job.job_id] = future
-        return future
-
-    def schedule_blocking(self, func, *args, **kwargs):
-        """Schedule a job to a remote worker, awaiting for it to finish its
-        execution.
-        """
-        timeout = kwargs.pop("timeout", None)
-        future = self.schedule(func, *args, **kwargs)
-        result = future.result(timeout)
-        return result
+# class ClientPool:
+#
+#     """Basic client pool, defining methods to talk to multiple remote
+#     workers
+#     """
+#
+#     # TODO WIP - still a rudimentary implementation
+#
+#     def __init__(self, config, router_class=actors.RoundRobinRouter):
+#         # List of tuples defining host:port pairs to connect
+#         self._config = config
+#         # Router class
+#         self._router_class = router_class
+#         # Pool of clients
+#         self._clients = [
+#             ZMQClient(host, psport, pull_port)
+#             for host, psport, pull_port in self._config
+#         ]
+#         # Collect results in a dictionary
+#         self._results = {}
+#         # Workers actor system
+#         self._system = actors.get_actorsystem("clientpool-actorsystem")
+#         # Workers pool
+#         self._workers = self._system.router_of(
+#             num_workers=len(self._clients),
+#             actor_class=worker.ClientWorker,
+#             router_class=self._router_class,
+#             clients=self._clients,
+#         )
+#
+#     @property
+#     def router_class(self):
+#         return self._router_class
+#
+#     @property
+#     def results(self):
+#         """Lazily check for new results and add them to the list of
+#         dictionaries before returning it
+#         """
+#         return self._results
+#
+#     def __iter__(self):
+#         return self._clients.__iter__()
+#
+#     def shutdown(self):
+#         """Close all connected clients"""
+#         for client in self._clients:
+#             client.close()
+#         self._system.shutdown()
+#
+#     def map(self, func, iterable):
+#         """Schedule a list of jobs represented by `iterable` in a round-robin
+#         manner. Can be seen as equivalent as schedule with `RoundRobinRouter`
+#         routing.
+#         """
+#         idx = 0
+#         for args, kwargs in iterable:
+#             if idx == len(self._clients) - 1:
+#                 idx = 0
+#             # Lazy check for connection
+#             if not self._clients[idx].is_connected():
+#                 self._clients[idx].connect()
+#             self._clients[idx].schedule(func, *args, **kwargs)
+#
+#     def schedule(self, func, *args, **kwargs):
+#         """Schedule a job to a remote worker, without blocking. Require a
+#         func task, and arguments to be passed with, cloudpickle will handle
+#         dependencies shipping. Optional it is possible to give a name to the
+#         job, otherwise a UUID will be defined
+#         """
+#         name = kwargs.pop("name", "")
+#         job = Job(name, func, *args, **kwargs)
+#         future = self._workers.route(job)
+#         self._results[job.job_id] = future
+#         return future
+#
+#     def schedule_blocking(self, func, *args, **kwargs):
+#         """Schedule a job to a remote worker, awaiting for it to finish its
+#         execution.
+#         """
+#         timeout = kwargs.pop("timeout", None)
+#         future = self.schedule(func, *args, **kwargs)
+#         result = future.result(timeout)
+#         return result

@@ -1,5 +1,6 @@
 from .jobqueue import JobQueue
 from .actors import WorkerActor
+from .executor import ProcessQueueExecutor
 from ..actors.actorsystem import get_actorsystem
 
 
@@ -14,6 +15,4 @@ def build_worker_actor_router(
 
 
 def build_jobqueue(num_workers):
-    return JobQueue(
-        num_workers=num_workers, worker_class=jobqueue.ProcessQueueExecutor
-    )
+    return JobQueue(num_workers=num_workers, worker_class=ProcessQueueExecutor)
