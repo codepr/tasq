@@ -5,8 +5,8 @@ Client part of the application, responsible for scheduling jobs to local or
 remote workers.
 """
 
+import asyncio
 from concurrent.futures import Future
-from concurrent.futures._base import InvalidStateError
 from threading import Thread, Event
 from collections import deque
 from ..job import Job, JobStatus
@@ -100,7 +100,7 @@ class Client:
                         "Can't update result: key %s not found",
                         job_result.name,
                     )
-                except InvalidStateError:
+                except asyncio.InvalidStateError:
                     self._log.warning("Result already gathered, discarding it")
 
     def is_connected(self):
