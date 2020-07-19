@@ -1,4 +1,4 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 with open("README.md") as readme_file:
     readme = readme_file.read()
@@ -15,7 +15,7 @@ setup(
     long_description=readme,
     author="Andrea Giacomo Baldan",
     author_email="a.g.baldan@gmail.com",
-    packages=["tasq", "tasq.actors", "tasq.remote", "tasq.cli", "tasq.worker"],
+    packages=find_packages(exclude=["tests", "static"]),
     install_requires=required,
     scripts=["tq"],
     test_suite="tests",

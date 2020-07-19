@@ -28,7 +28,7 @@ def loads(zipped_data: bytes) -> Any:
     return cloudpickle.loads(data)
 
 
-def sign(key: str, pickled_data: bytes) -> bytes:
+def sign(key: bytes, pickled_data: bytes) -> bytes:
     """Generate a diget as an array of bytes and return it as a sign for the
     pickled data to sign
     """
@@ -36,7 +36,7 @@ def sign(key: str, pickled_data: bytes) -> bytes:
     return digest
 
 
-def verifyhmac(key: str, recvd_digest: bytes, pickled_data: bytes) -> None:
+def verifyhmac(key: bytes, recvd_digest: bytes, pickled_data: bytes) -> None:
     """Verify the signed pickled data is valid and no changing were made,
     otherwise raise and exception
     """

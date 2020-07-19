@@ -7,8 +7,7 @@ The main client module, provides interfaces to instantiate queues
 from queue import Queue
 from threading import Thread
 from .job import Job
-from .remote.client import Client, TasqFuture
-from .actors.routers import actor_pool
+from .remote.client import TasqFuture
 
 
 class TasqQueue:
