@@ -6,7 +6,9 @@ The main client module, provides interfaces to instantiate queues
 
 from queue import Queue
 from threading import Thread
-from .remote.client import TasqFuture
+from .job import Job
+from .remote.client import Client, TasqFuture
+from .actors.routers import actor_pool
 
 
 class TasqQueue:
@@ -76,3 +78,50 @@ class TasqQueue:
 
     def results(self):
         return self._backend.results
+
+
+class TasqMultiQueue:
+    def __init__(self, backends, router_factory):
+        # List of backend clients
+        self._backends = backends
+        # Router to spread jobs
+        self._router = router_factory()
+
+    def shutdown(self):
+        """Close all connected clients"""
+        for backend in self._backends:
+            backend.disconnect()
+
+    def map(self, func, iterable):
+        """Schedule a list of jobs represented by `iterable` in a round-robin
+        manner. Can be seen as equivalent as schedule with `RoundRobinRouter`
+        routing.
+        """
+        idx = 0
+        for args, kwargs in iterable:
+            if idx == len(self._clients) - 1:
+                idx = 0
+            # Lazy check for connection
+            if not self._backends[idx].is_connected():
+                self._backends[idx].connect()
+            self._backends[idx].schedule(func, *args, **kwargs)
+
+    def put(self, func, *args, **kwargs):
+        """Schedule a job to a remote worker, without blocking. Require a
+        func task, and arguments to be passed with, cloudpickle will handle
+        dependencies shipping. Optional it is possible to give a name to the
+        job, otherwise a UUID will be defined
+        """
+        name = kwargs.pop("name", "")
+        job = Job(name, func, *args, **kwargs)
+        future = self._router.route(job)
+        return future
+
+    def put_blocking(self, func, *args, **kwargs):
+        """Schedule a job to a remote worker, awaiting for it to finish its
+        execution.
+        """
+        timeout = kwargs.pop("timeout", None)
+        future = self.schedule(func, *args, **kwargs)
+        result = future.result(timeout)
+        return result

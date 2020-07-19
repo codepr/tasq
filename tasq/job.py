@@ -97,7 +97,7 @@ class Job:
         except TypeError:
             return 0
 
-    def add_delay(self, delay):
+    def set_delay(self, delay):
         """Add a delay to the function"""
         self._delay = delay
 

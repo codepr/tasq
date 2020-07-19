@@ -25,7 +25,7 @@ class FakeConnection:
 
     def send(self, job):
         if self.sleep:
-            job.add_delay(self.sleep)
+            job.set_delay(self.sleep)
         self.result = job.execute()
         self.event.set()
 

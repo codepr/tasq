@@ -1,9 +1,11 @@
 """
 tasq.actors.actor.py
 ~~~~~~~~~~~~~~~~~~~~
+
 Contains definitions of generic Actor class, must be subclassed to effectively
 instance useful actors.
 """
+
 import uuid
 from queue import Queue
 from threading import Thread, Event
@@ -35,7 +37,7 @@ class Actor(ABC):
 
     """
 
-    def __init__(self, name=u'', ctx=None):
+    def __init__(self, name="", ctx=None):
         # Assingn a default uuid name in case of no name set
         self._name = name or uuid.uuid4()
         self._is_running = False
@@ -45,7 +47,7 @@ class Actor(ABC):
         # context == actorsystem singleton
         self._ctx = ctx or ActorSystem()
         # Logging settings
-        self._log = get_logger(f'{__name__}.{self._name}')
+        self._log = get_logger(f"{__name__}.{self._name}")
 
     @property
     def name(self):

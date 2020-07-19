@@ -90,6 +90,7 @@ class ZMQRunner:
         """
         self._backend.bind()
         self._run = True
+        self._log.info(self._backend)
         self._loop.create_task(self.run())
         self._loop.run_forever()
 

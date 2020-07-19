@@ -53,6 +53,13 @@ class ZMQBackend:
         self._poller.register(self._pull_socket, zmq.POLLIN)
         self._unix = unix
 
+    def __repr__(self):
+        protocol = "ipc" if self._unix else "zmq"
+        return (
+            f"ZMQBackend({protocol}://{self._host} in={self._push_port} "
+            f"out={self._pull_port})"
+        )
+
     def bind(self):
         """Binds PUSH and PULL channel sockets to the respective address:port
         pairs defined in the constructor

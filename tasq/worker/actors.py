@@ -201,23 +201,14 @@ class ClientWorker(Actor):
         :return: A `concurrent.Future` object, future object that will contain
                  the result of the job execution
         """
-        future = Future()
-        self.send((job, future))
-        return future
+        if not self._client.is_connected():
+            self._client.connect()
+        return self._client.schedule(
+            job.func, *job.args, name=job.job_id, **job.kwargs
+        )
 
     def run(self):
         """Consumes all messages in the mailbox, setting each future's result
         with the result returned by the call.
         """
-        while True:
-            job, future = self.recv()
-            self._log.debug("Received %s", job)
-            self._log.debug("%s - executing job %s", self.name, job.job_id)
-            if not self._client.is_connected():
-                self._client.connect()
-            fut = self._client.schedule(
-                job.func, *job.args, name=job.job_id, **job.kwargs
-            )
-            # XXX A bit sloppy, but probably better schedule the fut result
-            # settings in a callback
-            future.set_result(fut.result())
+        pass

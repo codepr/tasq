@@ -25,12 +25,12 @@ class TestJob(unittest.TestCase):
         self.assertTrue(isinstance(result, JobResult))
         self.assertEqual(result.value, 11)
 
-    def test_job_add_delay(self):
+    def test_job_set_delay(self):
         job = Job("job-1", lambda x: x + 1, 10)
         self.assertEqual(job.job_id, "job-1")
         self.assertEqual(job.status, JobStatus.PENDING)
         self.assertEqual(job.delay, 0)
-        job.add_delay(1)
+        job.set_delay(1)
         t1 = time.time()
         result = job.execute()
         t2 = time.time()

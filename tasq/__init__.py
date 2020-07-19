@@ -1,11 +1,13 @@
 from urllib.parse import urlparse
-from tasq.queue import TasqQueue
+from tasq.queue import TasqQueue, TasqMultiQueue
 from tasq.remote.connection import ZMQBackendConnection, BackendConnection
 from tasq.worker.jobqueue import JobQueue
 from tasq.worker.executor import ProcessQueueExecutor
 from tasq.remote.client import Client
 from tasq.remote.backend import RedisStoreBackend
 from tasq.remote.runner import Runners
+from tasq.worker.actors import ClientWorker
+from tasq.actors.routers import RoundRobinRouter, actor_pool
 
 __author__ = "Andrea Giacomo Baldan"
 __license__ = "GPL v3"
@@ -53,12 +55,49 @@ def queue(url="zmq://localhost:9000", store=None, signkey=None):
     """
     url_parsed = urlparse(url)
     scheme = url_parsed.scheme or "zmq"
-    assert scheme in _backends, f"Unsupported {url.scheme} as backend"
+    assert scheme in _backends, f"Unsupported {scheme} as backend"
     backend = _backends[scheme].from_url(url, signkey)
     client = Client(backend)
     if store:
         urlstore = urlparse(store)
-        assert urlstore.scheme in {"redis"}, f"Unknown {scheme} as store"
+        assert urlstore.scheme in {
+            "redis"
+        }, f"Unknown {urlstore.scheme} as store"
         db = int(urlstore.path.split("/")[-1]) if url.query else 0
         store = RedisStoreBackend(urlstore.hostname, urlstore.port, db)
     return TasqQueue(client, store)
+
+
+def multi_queue(urls, router_class=RoundRobinRouter, signkey=None):
+    assert all(
+        isinstance(url, tuple) or isinstance(url, str) for url in urls
+    ), "urls argument must be a tuple (host, push_port, pull_port) or a string"
+    backends = []
+    for url in urls:
+        if isinstance(url, tuple):
+            host, push_port, pull_port = url
+            backends.append(
+                Client(
+                    ZMQBackendConnection(
+                        host, push_port, pull_port, signkey=signkey
+                    )
+                )
+            )
+        elif isinstance(url, str):
+            url_parsed = urlparse(url)
+            scheme = url_parsed.scheme or "zmq"
+            assert scheme in (
+                "zmq",
+                "tcp",
+                "unix",
+            ), f"Unsupported {scheme} as backend"
+            backends.append(Client(_backends[scheme].from_url(url, signkey)))
+    return TasqMultiQueue(
+        backends,
+        lambda: actor_pool(
+            num_workers=len(backends),
+            actor_class=ClientWorker,
+            router_class=router_class,
+            clients=backends,
+        ),
+    )
