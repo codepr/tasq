@@ -3,7 +3,7 @@ import tasq.remote.serializer as serde
 from tasq.exception import SignatureNotValidException
 
 
-class SerializerTest(unittest.TestCase):
+class TestSerializer(unittest.TestCase):
     def test_serde_dumps_loads(self):
         base = lambda x, y: (x + y) / 2
         dump_base = serde.dumps(base)

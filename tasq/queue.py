@@ -86,6 +86,26 @@ class TasqMultiQueue:
         # Router to spread jobs
         self._router = router_factory()
 
+    def __len__(self):
+        return sum(len(b.pending_jobs()) for b in self._backends)
+
+    def is_connected(self):
+        return any([backend.is_connected() for backend in self._backends])
+
+    def connect(self):
+        for backend in self._backends:
+            backend.connect()
+
+    def disconnect(self):
+        for backend in self._backends:
+            backend.disconnect()
+
+    def pending_jobs(self):
+        jobs = []
+        for backend in self._backends:
+            jobs.extend(backend.pending_jobs())
+        return jobs
+
     def shutdown(self):
         """Close all connected clients"""
         for backend in self._backends:
@@ -121,6 +141,9 @@ class TasqMultiQueue:
         execution.
         """
         timeout = kwargs.pop("timeout", None)
-        future = self.schedule(func, *args, **kwargs)
+        future = self.put(func, *args, **kwargs)
         result = future.result(timeout)
         return result
+
+    def results(self):
+        return [backend.results for backend in self._backends]

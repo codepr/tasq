@@ -181,7 +181,9 @@ def connect_redis_backend(
     host, port, db, name, namespace="queue", signkey=None
 ):
     return BackendConnection(
-        RedisBackend(lambda: redis.StrictRedis(host, port, db), name, namespace),
+        RedisBackend(
+            lambda: redis.StrictRedis(host, port, db), name, namespace
+        ),
         signkey=signkey,
     )
 

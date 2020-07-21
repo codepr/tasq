@@ -1,6 +1,7 @@
 import time
 import unittest
-from tasq.queue import TasqQueue
+from tasq import RoundRobinRouter, ClientWorker, actor_pool
+from tasq.queue import TasqQueue, TasqMultiQueue
 from tasq.job import JobResult
 
 
@@ -24,7 +25,8 @@ class FakeBackend:
 
         fut = TasqFuture()
         fut.set_result(JobResult("test", 0, True))
-        self._pending_jobs.append(func)
+        if not self.is_connected():
+            self._pending_jobs.append(func)
         self.results.append(True)
         return fut
 
@@ -59,7 +61,7 @@ class TestTasqQueue(unittest.TestCase):
     def test_queue_put(self):
         tq = TasqQueue(FakeBackend())
         fut = tq.put(lambda x: x + 1, 10)
-        self.assertEqual(len(tq.pending_jobs()), 1)
+        self.assertEqual(len(tq.pending_jobs()), 0)
         self.assertTrue(fut.unwrap())
 
     def test_queue_put_blocking(self):
@@ -71,3 +73,72 @@ class TestTasqQueue(unittest.TestCase):
         self.assertEqual(len(tq.results()), 1)
         self.assertTrue(res.unwrap())
         self.assertAlmostEqual(t2 - t1, 1, delta=0.1)
+
+
+class TestMultiTasqQueue(unittest.TestCase):
+    def setUp(self):
+        self.backends = [FakeBackend(), FakeBackend(), FakeBackend()]
+        self.router_class = RoundRobinRouter
+
+    def test_multiqueue_init(self):
+        tq = TasqMultiQueue(
+            self.backends,
+            lambda: actor_pool(
+                num_workers=len(self.backends),
+                actor_class=ClientWorker,
+                router_class=self.router_class,
+                clients=self.backends,
+            ),
+        )
+        self.assertFalse(tq.is_connected())
+        self.assertEqual(len(tq), 0)
+        self.assertEqual(tq.pending_jobs(), [])
+
+    def test_multiqueue_disconnect(self):
+        tq = TasqMultiQueue(
+            self.backends,
+            lambda: actor_pool(
+                num_workers=len(self.backends),
+                actor_class=ClientWorker,
+                router_class=self.router_class,
+                clients=self.backends,
+            ),
+        )
+        self.assertFalse(tq.is_connected())
+        self.assertEqual(len(tq), 0)
+        self.assertEqual(tq.pending_jobs(), [])
+        tq.disconnect()
+        self.assertFalse(tq.is_connected())
+
+    def test_multiqueue_put(self):
+        tq = TasqMultiQueue(
+            self.backends,
+            lambda: actor_pool(
+                num_workers=len(self.backends),
+                actor_class=ClientWorker,
+                router_class=self.router_class,
+                clients=self.backends,
+            ),
+        )
+        fut = tq.put(lambda x: x + 1, 10)
+        self.assertEqual(len(tq.pending_jobs()), 0)
+        self.assertTrue(fut.unwrap())
+
+    def test_multiqueue_put_blocking(self):
+        tq = TasqMultiQueue(
+            self.backends,
+            lambda: actor_pool(
+                num_workers=len(self.backends),
+                actor_class=ClientWorker,
+                router_class=self.router_class,
+                clients=self.backends,
+            ),
+        )
+        tq.connect()
+        t1 = time.time()
+        res = tq.put_blocking(lambda x: x + 1, 10)
+        t2 = time.time()
+        self.assertEqual(tq.pending_jobs(), [])
+        self.assertEqual(len(tq.results()), 3)
+        self.assertTrue(res)
+        self.assertAlmostEqual(t2 - t1, .1, delta=0.1)
