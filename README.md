@@ -23,7 +23,19 @@ to workers, but the entire system is meant to be used in a safe environment.
 **NOTE:** The project is still in development stage and it's not advisable to
 try it in production enviroments.
 
+Features:
 
+- Redis, RabbitMQ or ZMQ (brokerless) as backend
+- Delayed tasks and scheduled cron tasks
+- Configuration on disk
+- Actor-based workers (I/O bound tasks)
+- Process queue workers (CPU bound tasks)
+
+Todo:
+
+- Check for pynacl for security on pickled data
+- Refactoring of bad parts
+- More debug (constant debugging)
 
 ## Quickstart
 
@@ -182,15 +194,4 @@ $ pip install git+https://github.com/codepr/tasq.git@master#egg=tasq
 
 See the [CHANGES](CHANGES.md) file.
 
-## TODO:
 
-- [x] Possibility of a broker to persist jobs (classic task queue celery like)
-- [x] Delayed tasks and scheduled cron tasks
-- [x] Configuration handling throughout the code
-- [x] Better explanation of the implementation and actors defined
-- [x] Improve CLI options
-- [ ] Check for pynacl for security on pickled data
-- [ ] Tests
-- [ ] Refactor of existing code and corner case handling (Still very basic implementation of even
-      simple heuristics)
-- [ ] Dockerfile
