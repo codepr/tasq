@@ -9,7 +9,7 @@ required = ["zmq", "cloudpickle", "redis", "pika"]
 
 setup(
     name="tasq",
-    version="1.2.2",
+    version="1.2.4",
     description="A simple task queue implementation leveraging zmq and a naive "
     "implementation of the actor model to enqeue jobs on local or remote processes",
     long_description=readme,
