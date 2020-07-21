@@ -44,6 +44,7 @@ class Runner:
         for incoming tasks and run the asyncio loop forever
         """
         self._run = True
+        self._log.debug("Listening on %s", self._backend)
         self.run()
 
     def run(self):

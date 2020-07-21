@@ -4,7 +4,7 @@ from tasq.remote.connection import ZMQBackendConnection, BackendConnection
 from tasq.worker.jobqueue import JobQueue
 from tasq.worker.executor import ProcessQueueExecutor
 from tasq.remote.client import Client
-from tasq.remote.backend import RedisStoreBackend
+from tasq.remote.backend import RedisStoreBackend, RedisBackend
 from tasq.remote.runner import Runners
 from tasq.worker.actors import ClientWorker
 from tasq.actors.routers import RoundRobinRouter, actor_pool
@@ -27,7 +27,7 @@ _backends = {
 }
 
 
-def queue(url="zmq://localhost:9000", store=None, signkey=None):
+def queue(backend="zmq://localhost:9000", store=None, signkey=None):
     """
     Create a TasqQueue instance.
     The formats accepted for the backends are:
@@ -53,17 +53,20 @@ def queue(url="zmq://localhost:9000", store=None, signkey=None):
     :param signkey: A string representing a shared key, sign data with a shared
                     key
     """
-    url_parsed = urlparse(url)
-    scheme = url_parsed.scheme or "zmq"
-    assert scheme in _backends, f"Unsupported {scheme} as backend"
-    backend = _backends[scheme].from_url(url, signkey)
-    client = Client(backend)
+    if isinstance(backend, str):
+        url_parsed = urlparse(backend)
+        scheme = url_parsed.scheme or "zmq"
+        assert scheme in _backends, f"Unsupported {scheme} as backend"
+        _backend = _backends[scheme].from_url(backend, signkey)
+        client = Client(_backend)
+    elif isinstance(backend, RedisBackend):
+        client = Client(BackendConnection(backend))
     if store:
         urlstore = urlparse(store)
         assert urlstore.scheme in {
             "redis"
         }, f"Unknown {urlstore.scheme} as store"
-        db = int(urlstore.path.split("/")[-1]) if url.query else 0
+        db = int(urlstore.path.split("/")[-1]) if urlstore.query else 0
         store = RedisStoreBackend(urlstore.hostname, urlstore.port, db)
     return TasqQueue(client, store)
 

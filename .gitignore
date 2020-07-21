@@ -6,3 +6,4 @@ tags
 *.log
 *.conf
 *.egg-info
+.coverage

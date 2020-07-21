@@ -7,6 +7,12 @@ This module contains classes to define connections using zmq sockets.
 
 import zmq
 from urllib.parse import urlparse
+
+try:
+    import redis
+except ImportError:
+    print("You need to install redis python driver to use redis backend")
+
 from .backend import RedisBackend, RabbitMQBackend
 from .sockets import CloudPickleContext, BackendSocket
 from ..exception import BackendCommunicationErrorException
@@ -159,11 +165,12 @@ class BackendConnection:
         conn_args = {
             "host": u.hostname or "localhost",
             "port": u.port or 6379,
-            "name": name,
         }
         if scheme == "redis":
             conn_args["db"] = int(extraparams.get("db", 0))
-            backend = RedisBackend(**conn_args)
+            backend = RedisBackend(
+                lambda: redis.StrictRedis(**conn_args), name=name
+            )
         else:
             conn_args["role"] = extraparams.get("role", "sender")
             backend = RabbitMQBackend(**conn_args)
@@ -174,7 +181,8 @@ def connect_redis_backend(
     host, port, db, name, namespace="queue", signkey=None
 ):
     return BackendConnection(
-        RedisBackend(host, port, db, name, namespace), signkey=signkey,
+        RedisBackend(lambda: redis.StrictRedis(host, port, db), name, namespace),
+        signkey=signkey,
     )
 
 

@@ -138,11 +138,11 @@ class RedisBackend:
 
         log = get_logger(__name__)
 
-        def __init__(self, name, host, port, db, namespace="queue"):
+        def __init__(self, name, redis_driver, namespace="queue"):
             """The default connection parameters are: host='localhost',
             port=6379, db=0
             """
-            self._db = redis.StrictRedis(host=host, port=port, db=db)
+            self._db = redis_driver
 
             try:
                 _ = self._db.dbsize()
@@ -151,6 +151,9 @@ class RedisBackend:
 
             self._queue_name = f"{namespace}:{name}"
             self._work_queue_name = f"{namespace}:{name}:work"
+
+        def __repr__(self):
+            return f"{self._db}:({self._queue_name}, {self._work_queue_name})"
 
         def qsize(self):
             """Return the approximate size of the queue."""
@@ -245,22 +248,16 @@ class RedisBackend:
         def close(self):
             self._db.connection_pool.disconnect()
 
-    def __init__(self, host, port, db, name, namespace="queue"):
+    def __init__(self, redis_factory, name, namespace="queue"):
 
-        self._rq = self.RedisQueue(name, host, port, db, namespace)
+        self._rq = self.RedisQueue(name, redis_factory(), namespace)
         self._rq_res = self.RedisQueue(
-            f"{name}:result", host, port, db, namespace
+            f"{name}:result", redis_factory(), namespace
         )
-        self._host = host
-        self._port = port
-        self._db = db
         self._namespace = f"{namespace}:{name}"
 
     def __repr__(self):
-        return (
-            f"RedisBackend(redis://{self._host}:{self._port}/{self._db}"
-            f"?name={self._namespace}"
-        )
+        return f"RedisBackend(redis://{self._rq}"
 
     def put_job(self, serialized_job):
         self._rq.put(serialized_job)
