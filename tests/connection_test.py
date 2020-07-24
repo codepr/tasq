@@ -1,6 +1,7 @@
 import unittest
 from unittest.mock import patch
 from tasq.remote.connection import ZMQBackendConnection, BackendConnection
+from .backend_test import FakeSocket
 
 
 class TestConnection(unittest.TestCase):
@@ -39,3 +40,16 @@ class TestConnection(unittest.TestCase):
             conn = BackendConnection.from_url(
                 "zmw://localhost:9000?pull_port=9002"
             )
+
+    def test_zmqconnection_connect(self):
+        fake_socket = FakeSocket()
+        with patch("tasq.remote.connection.CloudPickleContext.socket") as mock:
+            mock.return_value = fake_socket
+        conn = ZMQBackendConnection("1.2.3.4", 20000, 20001)
+        self.assertEqual(
+            str(conn), "ZMQBackendConnection(zmq://1.2.3.4:(20001, 20000))"
+        )
+        conn.connect()
+        self.assertEqual(fake_socket.bind_url, "")
+        conn.disconnect()
+        self.assertEqual(fake_socket.dc_url, "")

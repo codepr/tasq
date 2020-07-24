@@ -11,6 +11,7 @@ from tasq.remote.backend import ZMQBackend, RedisBackend, RabbitMQBackend
 class FakeSocket:
     def __init__(self):
         self.bind_url = u""
+        self.dc_url = u""
         self.data_sent = None
 
     async def send_data(self, data, flags, signkey):
@@ -21,6 +22,12 @@ class FakeSocket:
 
     def bind(self, url):
         self.bind_url = url
+
+    def connect(self, url):
+        self.bind_url = url
+
+    def disconnect(self, url):
+        self.dc_url = url
 
     def close(self):
         pass
