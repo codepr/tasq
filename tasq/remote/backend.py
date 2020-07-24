@@ -364,10 +364,10 @@ class RabbitMQBackend:
 
     """Simple Queue with RabbitMQ Backend"""
 
-    def __init__(self, host, port, role, name, namespace="queue"):
+    def __init__(self, amqp_factory, role, name, namespace="queue"):
         """The default connection parameters are: host='localhost', port=5672
         """
-        self._host, self._port = host, port
+        self._driver = amqp_factory()
         assert role in {"receiver", "sender"}, f"Unknown role {role}"
         self._role = role
         self._queue_name = f"{namespace}:{name}"
@@ -378,9 +378,7 @@ class RabbitMQBackend:
         threading.Thread(target=self._start, daemon=True).start()
 
     def _get_channel(self):
-        channel = pika.BlockingConnection(
-            pika.ConnectionParameters(host=self._host, port=self._port)
-        ).channel()
+        channel = self._driver.channel()
         return channel
 
     def _get_job(self, ch, method, _, body):
@@ -408,8 +406,8 @@ class RabbitMQBackend:
 
     def __repr__(self):
         return (
-            f"RabbitMQBackend(amqp://{self._host}:{self._port}/"
-            f"?name={self._name}, role=self._role)"
+            f"RabbitMQBackend({self._driver}?"
+            f"name={self._name}, role=self._role)"
         )
 
     def put_job(self, serialized_job):
@@ -433,7 +431,8 @@ class RabbitMQBackend:
             return None
 
     def stop(self):
-        pass
+        ch = self._get_channel()
+        ch.stop()
 
     def close(self):
-        pass
+        self.stop()

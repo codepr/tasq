@@ -141,4 +141,4 @@ class TestMultiTasqQueue(unittest.TestCase):
         self.assertEqual(tq.pending_jobs(), [])
         self.assertEqual(len(tq.results()), 3)
         self.assertTrue(res)
-        self.assertAlmostEqual(t2 - t1, .1, delta=0.1)
+        self.assertAlmostEqual(t2 - t1, 0.1, delta=0.1)

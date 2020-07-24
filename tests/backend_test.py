@@ -1,6 +1,8 @@
 import time
+import queue
 import asyncio
 import unittest
+import threading
 import collections
 from unittest.mock import patch
 from tasq.remote.backend import ZMQBackend, RedisBackend, RabbitMQBackend
@@ -68,6 +70,53 @@ class FakeRedisClient:
 
     def lrange(self, queue_name, start, end):
         return self.queues[queue_name][start:end]
+
+
+class AMQPMethod:
+    def __init__(self):
+        self.delivery_tag = None
+
+
+class FakeAMQPChannel:
+    def __init__(self):
+        self.run = threading.Event()
+        self.queues = collections.defaultdict(queue.Queue)
+        self.consume_queue = None
+        self.on_message = None
+
+    def basic_publish(self, exchange, queue_name, item):
+        self.queues[queue_name].put(item)
+
+    def basic_consume(self, queue, on_message_callback):
+        self.on_message = on_message_callback
+
+    def basic_ack(self, delivery_tag):
+        pass
+
+    def basic_qos(self, prefetch_count):
+        pass
+
+    def queue_declare(self, queue, durable=True):
+        self.consume_queue = queue
+
+    def start_consuming(self):
+        while not self.run.is_set():
+            item = self.queues[self.consume_queue].get()
+            if not item:
+                break
+            self.on_message(self, AMQPMethod(), None, item)
+
+    def stop(self):
+        self.queues[self.consume_queue].put(None)
+        self.run.set()
+
+
+_amqp_channel = FakeAMQPChannel()
+
+
+class FakeAMQPClient:
+    def channel(self):
+        return _amqp_channel
 
 
 class TestZMQBackend(unittest.TestCase):
@@ -138,4 +187,10 @@ class TestRedisBackend(unittest.TestCase):
 
 
 class TestRabbitMQBackend(unittest.TestCase):
-    pass
+    def test_amqp_put_job(self):
+        backend = RabbitMQBackend(
+            lambda: FakeAMQPClient(), role="receiver", name="test-queue"
+        )
+        backend.put_job("test-job")
+        self.assertEqual(backend.get_next_job(), "test-job")
+        backend.stop()

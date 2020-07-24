@@ -5,14 +5,9 @@ tasq.remote.connection.py
 This module contains classes to define connections using zmq sockets.
 """
 
+import sys
 import zmq
 from urllib.parse import urlparse
-
-try:
-    import redis
-except ImportError:
-    print("You need to install redis python driver to use redis backend")
-
 from .backend import RedisBackend, RabbitMQBackend
 from .sockets import CloudPickleContext, BackendSocket
 from ..exception import BackendCommunicationErrorException
@@ -167,19 +162,42 @@ class BackendConnection:
             "port": u.port or 6379,
         }
         if scheme == "redis":
+            try:
+                import redis
+            except ImportError:
+                print(
+                    "You need to install redis python driver to use redis backend"
+                )
+                sys.exit(1)
             conn_args["db"] = int(extraparams.get("db", 0))
             backend = RedisBackend(
                 lambda: redis.StrictRedis(**conn_args), name=name
             )
         else:
-            conn_args["role"] = extraparams.get("role", "sender")
-            backend = RabbitMQBackend(**conn_args)
+            try:
+                import pika
+            except ImportError:
+                print("You need to install pika to use rabbitmq backend")
+                sys.exit(1)
+            role = extraparams.get("role", "sender")
+            backend = RabbitMQBackend(
+                lambda: pika.BlockingConnection(
+                    pika.ConnectionParameters(**conn_args)
+                ),
+                role=role,
+                name=name,
+            )
         return cls(backend, signkey)
 
 
 def connect_redis_backend(
     host, port, db, name, namespace="queue", signkey=None
 ):
+    try:
+        import redis
+    except ImportError:
+        print("You need to install redis python driver to use redis backend")
+        sys.exit(1)
     return BackendConnection(
         RedisBackend(
             lambda: redis.StrictRedis(host, port, db), name, namespace
@@ -191,6 +209,19 @@ def connect_redis_backend(
 def connect_rabbitmq_backend(
     host, port, role, name, namespace="queue", signkey=None
 ):
+    try:
+        import pika
+    except ImportError:
+        print("You need to install pika to use rabbitmq backend")
+        sys.exit(1)
     return BackendConnection(
-        RabbitMQBackend(host, port, role, name, namespace), signkey=signkey,
+        RabbitMQBackend(
+            lambda: pika.BlockingConnection(
+                pika.ConnectionParameters(host=host, port=port)
+            ),
+            role,
+            name,
+            namespace,
+        ),
+        signkey=signkey,
     )

@@ -4,7 +4,11 @@ from tasq.remote.connection import ZMQBackendConnection, BackendConnection
 from tasq.worker.jobqueue import JobQueue
 from tasq.worker.executor import ProcessQueueExecutor
 from tasq.remote.client import Client
-from tasq.remote.backend import RedisStoreBackend, RedisBackend
+from tasq.remote.backend import (
+    RedisStoreBackend,
+    RedisBackend,
+    RabbitMQBackend,
+)
 from tasq.remote.runner import Runners
 from tasq.worker.actors import ClientWorker
 from tasq.actors.routers import RoundRobinRouter, actor_pool
@@ -60,6 +64,8 @@ def queue(backend="zmq://localhost:9000", store=None, signkey=None):
         _backend = _backends[scheme].from_url(backend, signkey)
         client = Client(_backend)
     elif isinstance(backend, RedisBackend):
+        client = Client(BackendConnection(backend))
+    elif isinstance(backend, RabbitMQBackend):
         client = Client(BackendConnection(backend))
     if store:
         urlstore = urlparse(store)
