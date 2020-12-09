@@ -2,4 +2,4 @@ zmq
 redis
 pika
 cloudpickle
-dataclasses
+dataclasses;python_version<"3.7"
